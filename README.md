@@ -11,7 +11,7 @@
 
 # shellbeats
 
-![shellbeats](shellbeats.jpg)
+![Demo](shellbeats.gif)
 
 A terminal music player for Linux. Search YouTube and stream audio directly from your command line.
 
