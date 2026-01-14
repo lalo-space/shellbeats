@@ -1,20 +1,27 @@
 ## Updates
 
-**v0.2** - Playlist support is here!
+**v0.3** - Playlist support and download features!
 - Press `f` to access playlists menu
 - Create, delete, and manage your playlists
 - Add songs from search results with `a`
+- **Download songs as MP3** with `d` key - runs in background thread
+- **Auto-download**: songs are automaticaly queued for download when added to playlists
+- **Offline playback**: plays from local files when availible, streams if not
+- **Smart cleanup**: deleting a playlist removes the folder and all downloaded files
+- **Visual markers**: `[D]` tag shows which songs are saved localy
+- **Settings page**: configure download path (default `~/Music/shellbeats/`)
+- **About screen**: press `i` to see app info
+- **Better UI**: all shortcuts now visible in header (two rows)
 - Auto-play: when a song ends, the next one starts automatically
+- Download queue persists between sessions - interrupted downloads resume on restart
 - Everything saved in `~/.shellbeats/` so your playlists persist between sessions
-- All UI now in English (finally cleaned up those Italian strings)
-- Project started in Italian for personal use, now it's 100% translated in english no more half italian words.
+- Project started in Italian for personal use, now it's 100% translated in english no more half italian words.)
 
-# shellbeats
+# shellbeats V0.3
 
-***This is a preview of version 0.3, featuring download options for search results, playlists, and full playlist downloads. Available soon!***
 ![Demo](shellbeats.gif)
 
-A terminal music player for Linux. Search YouTube and stream audio directly from your command line.
+A terminal music player for Linux. Search YouTube, stream audio, and download your favorite tracks directly from your command line.
 
 ![shellbeats](screenshot.png)
 
@@ -25,8 +32,9 @@ I wrote this because I use a tiling window manager and I got tired of:
 - Managing clunky music player windows that break my workflow
 - Keeping browser tabs open with YouTube eating up RAM
 - Getting distracted by video recommendations when I just want to listen to music
+- Not having offline access to my favorite tracks
 
-shellbeats stays in the terminal where it belongs. Search, play, done.
+shellbeats stays in the terminal where it belongs. Search, play, download, done.
 
 ## How it works
 
@@ -45,20 +53,41 @@ shellbeats stays in the terminal where it belongs. Search, play, done.
 │       └─────────> │   IPC    │ ────────────┘                               │
 │                   │  Socket  │                                             │
 │                   └──────────┘                                             │
+│                                                                            │
+│  ┌──────────┐      ┌──────────┐      ┌──────────┐                          │
+│  │ Download │      │  yt-dlp  │      │  Local   │                          │
+│  │  Thread  │ ───> │ (extract)│ ───> │  Storage │                          │
+│  └──────────┘      └──────────┘      └──────────┘                          │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
 1. You search for something
 2. yt-dlp fetches results from YouTube
-3. mpv streams the audio (nothing saved to disk)
+3. mpv streams the audio (or plays from disk if downloaded)
 4. IPC socket handles communication between shellbeats and mpv
+5. Background thread processes download queue without blocking UI
+
+### Download system
+
+The download feature runs in a seperate pthread to keep the UI responsive:
+
+- Press `d` on any song to add it to the download queue
+- Songs added to playlists are automatically queued for dowload
+- Download happens in background - you can keep browsing and playing music
+- Queue persists to disk (`~/.shellbeats/download_queue.json`)
+- If you quit with active downloads they'll resume next time you start shellbeats
+- Files are organized by playlist: `~/Music/shellbeats/PlaylistName/Song_[videoid].mp3`
+- Duplicate detection: won't download the same video twice
+- Visual feedback: spinner in status bar shows active downloads
+
+When playing from a playlist, shellbeats checks if the file exists localy first. If it does it plays from disk (instant, no buffering), otherwise it streams from YouTube.
 
 ### Auto-play detection
 
 The auto-play feature uses mpv's IPC socket to detect when a track ends. Here's the deal:
 
 - shellbeats connects to mpv via a Unix socket (`/tmp/shellbeats_mpv.sock`)
-- The main loop uses `poll()` to check for events without burning CPU cycles
+- The main loop uses `getch()` with 100ms timeout to check for events without burning CPU
 - When mpv finishes a track, it sends an `end-file` event with `reason: eof`
 - shellbeats catches this and automatically loads the next song
 
@@ -72,20 +101,36 @@ Playlists are stored as simple JSON files:
 
 ```
 ~/.shellbeats/
+├── config.json             # app configuration (download path)
 ├── playlists.json          # index of all playlists
+├── download_queue.json     # pending downloads
 └── playlists/
     ├── chill_vibes.json    # individual playlist
     ├── workout.json
     └── ...
 ```
 
-Each playlist file just contains the song title and YouTube video ID. When you play a song, shellbeats reconstructs the URL from the ID. Simple and easy to edit by hand if you ever need to.
+Downloaded files:
+
+```
+~/Music/shellbeats/
+├── Rock Classics/
+│   ├── Bohemian_Rhapsody_[dQw4w9WgXcQ].mp3
+│   ├── Stairway_to_Heaven_[rn_YodiJO6k].mp3
+│   └── ...
+├── Jazz Favorites/
+│   └── ...
+└── (songs not in playlists go in root)
+```
+
+Each playlist file just contains the song title and YouTube video ID. When you play a song shellbeats reconstructs the URL from the ID. Simple and easy to edit by hand if you ever need to.
 
 ## Dependencies
 
 - `mpv` - audio playback
-- `yt-dlp` - YouTube search and streaming
+- `yt-dlp` - YouTube search, streaming and downloading
 - `ncurses` - terminal UI
+- `pthread` - background downloads
 
 ## Setup
 
@@ -115,6 +160,8 @@ shellbeats
 
 ## Controls
 
+All shortcuts are now visible in the header when you run shellbeats. Heres the complete list:
+
 ### Playback
 
 | Key | Action |
@@ -143,27 +190,33 @@ shellbeats
 | `f` | Open playlists menu |
 | `a` | Add current song to a playlist |
 | `c` | Create new playlist |
-| `d` | Remove song from playlist |
-| `x` | Delete playlist (when in playlists view) |
+| `r` | Remove song from playlist |
+| `x` | Delete playlist (including folder & downloaded files) |
+| `d` | Download song or entire playlist |
+
+### Other
+
+| Key | Action |
+|-----|--------|
+| `S` | Open settings (configure download path) |
+| `i` | Show about screen |
+| `h` or `?` | Show help |
+
+## Features
+
+- **Offline Mode**: Download songs and play them without internet
+- **Smart Playback**: Automatically plays from disk when available
+- **Background Downloads**: Keep using the app while downloads run
+- **Visual Feedback**: `[D]` marker shows downloaded songs, spinner shows active downloads
+- **Organized Storage**: Each playlist gets its own folder
+- **Clean Deletion**: Removing a playlist deletes its folder and all files
+- **Persistent Queue**: Resume interrupted downloads on restart
+- **Duplicate Prevention**: Won't download the same song twice
 
 ## BUGS
 
-- [ ] **Investigate rare playback issue**: Some searched songs don't start playing for some reason. Not sure yet if it's a yt-dlp thing, an mpv thing, or something in my code. Need to dig into the logs and figure out what's happening. If you hit this, try searching for the same song again or pick a different result.
+No known bugs at the moment! If you find something please open an issue.
 
-- [ ] Creating a playlist while adding a song directly from search doesn’t fetch the number of items in each playlist.
-
-## TODO
-
-- [ ] Download MP3 files to disk, including support for downloading entire playlists.
-
-- [ ] Prioritize local storage for playback; stream only when a track has not been downloaded.
-
-- [ ] Use an external thread to manage the download queue, providing status signals such as active downloads, automatic resume after closing the program, and skipping files that fail to download.
-
-- [ ] Provide customizable settings via an ncurses interface, with all settings saved to a configuration file.
-
-- [ ] Allow users to edit the storage path for downloaded music.
-      
 ## License
 
-MIT - do whatever you want with it.
+GPL-3.0 license
