@@ -219,7 +219,7 @@ All shortcuts are now visible in the header when you run shellbeats. Heres the c
 No known bugs at the moment! If you find something please open an issue.
 
 ## TODO
-Thanks to **arjuna93** on reddit asking for: "make it cross-platform macOS and *BSD."
+Find a way to use an "AI agent" to find the music on Youtube and turn it into a Shellbeats playlist
 
 ## License
 
