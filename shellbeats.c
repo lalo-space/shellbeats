@@ -52,6 +52,7 @@ typedef struct {
     Song items[MAX_PLAYLIST_ITEMS];
     int count;
     bool is_youtube_playlist;
+    char *source_url;
 } Playlist;
 
 // NEW: Configuration structure
@@ -1165,6 +1166,7 @@ static void free_playlist_items(Playlist *pl) {
 static void free_playlist(Playlist *pl) {
     free(pl->name);
     free(pl->filename);
+    free(pl->source_url);
     pl->name = NULL;
     pl->filename = NULL;
     free_playlist_items(pl);
@@ -1231,8 +1233,15 @@ static void save_playlist(AppState *st, int idx) {
     FILE *f = fopen(path, "w");
     if (!f) return;
     
-    fprintf(f, "{\n  \"name\": \"%s\",\n  \"type\": \"%s\",\n  \"songs\": [\n",
-            pl->name, pl->is_youtube_playlist ? "youtube" : "local");
+    if (pl->is_youtube_playlist && pl->source_url && pl->source_url[0]) {
+        char *escaped_src = json_escape_string(pl->source_url);
+        fprintf(f, "{\n  \"name\": \"%s\",\n  \"type\": \"%s\",\n  \"source_url\": \"%s\",\n  \"songs\": [\n",
+                pl->name, pl->is_youtube_playlist ? "youtube" : "local", escaped_src ? escaped_src : "");
+        free(escaped_src);
+    } else {
+        fprintf(f, "{\n  \"name\": \"%s\",\n  \"type\": \"%s\",\n  \"songs\": [\n",
+                pl->name, pl->is_youtube_playlist ? "youtube" : "local");
+    }
     
     for (int i = 0; i < pl->count; i++) {
         char *escaped_title = json_escape_string(pl->items[i].title);
@@ -1283,10 +1292,18 @@ static void load_playlist_songs(AppState *st, int idx) {
     content[read_size] = '\0';
     fclose(f);
     
-    // Parse type
+    // Parse type and source_url
     char *type = json_get_string(content, "type");
     pl->is_youtube_playlist = (type && strcmp(type, "youtube") == 0);
     free(type);
+
+    char *src = json_get_string(content, "source_url");
+    if (src && src[0]) {
+        pl->source_url = src; // take ownership
+    } else {
+        free(src);
+        pl->source_url = NULL;
+    }
     
     // Parse songs array - simple approach
     const char *p = strstr(content, "\"songs\"");
@@ -1451,6 +1468,7 @@ static int create_playlist(AppState *st, const char *name, bool is_youtube) {
     st->playlists[idx].filename = filename;
     st->playlists[idx].count = 0;
     st->playlists[idx].is_youtube_playlist = is_youtube;
+    st->playlists[idx].source_url = NULL;
     st->playlist_count++;
     
     save_playlists_index(st);
@@ -2074,14 +2092,14 @@ static void format_duration(int sec, char out[16]) {
 }
 
 // NEW: Updated draw_header to include VIEW_SETTINGS
-static void draw_header(int cols, ViewMode view) {
+static void draw_header(AppState *st, int cols) {
     // Line 1: Title
     attron(A_BOLD);
-    mvprintw(0, 0, " ShellBeats v0.5 ");
+    mvprintw(0, 0, " ShellBeats v0.6 ");
     attroff(A_BOLD);
 
     // Line 2-3: Shortcuts (two lines)
-    switch (view) {
+    switch (st->view) {
         case VIEW_SEARCH:
             mvprintw(1, 0, "  /,s: search | Enter: play | Space: pause | n: next | p: prev | x: stop");
             mvprintw(2, 0, "  a: add to playlist | d: download | c: create playlist | f: playlists | S: settings | i: about | q: quit");
@@ -2091,8 +2109,23 @@ static void draw_header(int cols, ViewMode view) {
             mvprintw(2, 0, "  Esc: back | i: about | q: quit");
             break;
         case VIEW_PLAYLIST_SONGS:
-            mvprintw(1, 0, "  Enter: play | Space: pause | n: next | p: prev | x: stop");
-            mvprintw(2, 0, "  a: add song | d: download | r: remove | D: download all (YT) | Esc: back | i: about | q: quit");
+            {
+                bool show_refresh = false;
+                if (st && st->playlist_count > 0 && st->playlist_selected >= 0 &&
+                    st->playlist_selected < st->playlist_count) {
+                    Playlist *pl = &st->playlists[st->playlist_selected];
+                    if (pl->is_youtube_playlist && pl->source_url && pl->source_url[0]) {
+                        show_refresh = true;
+                    }
+                }
+
+                mvprintw(1, 0, "  Enter: play | Space: pause | n: next | p: prev | x: stop");
+                if (show_refresh) {
+                    mvprintw(2, 0, "  a: add song | d: download | r: remove | R: refresh | D: download all (YT) | Esc: back | i: about | q: quit");
+                } else {
+                    mvprintw(2, 0, "  a: add song | d: download | r: remove | D: download all (YT) | Esc: back | i: about | q: quit");
+                }
+            }
             break;
         case VIEW_ADD_TO_PLAYLIST:
             mvprintw(1, 0, "  Enter: add to playlist | c: create new playlist");
@@ -2656,7 +2689,7 @@ static void draw_ui(AppState *st, const char *status) {
     int rows, cols;
     getmaxyx(stdscr, rows, cols);
     
-    draw_header(cols, st->view);
+    draw_header(st, cols);
     
     switch (st->view) {
         case VIEW_SEARCH:
@@ -3415,6 +3448,9 @@ int main(int argc, char *argv[]) {
                             }
 
                             Playlist *pl = &st.playlists[idx];
+                            // Store source URL for later refreshes
+                            if (pl->source_url) free(pl->source_url);
+                            pl->source_url = strdup(url);
                             for (int i = 0; i < fetched; i++) {
                                 pl->items[i] = temp_songs[i];
                                 pl->count++;
@@ -3561,6 +3597,36 @@ int main(int argc, char *argv[]) {
                             } else {
                                 snprintf(status, sizeof(status), "All songs already queued or downloaded");
                             }
+                        }
+                        break;
+
+                    // Refresh YouTube playlist from online and overwrite songs
+                    case 'R':
+                        if (pl && pl->is_youtube_playlist && pl->source_url && pl->source_url[0]) {
+                            char fetched_title[256] = {0};
+                            Song temp_songs[MAX_PLAYLIST_ITEMS];
+                            snprintf(status, sizeof(status), "Refreshing playlist...");
+                            draw_ui(&st, status);
+
+                            int fetched = fetch_youtube_playlist(pl->source_url, temp_songs, MAX_PLAYLIST_ITEMS,
+                                                                 fetched_title, sizeof(fetched_title),
+                                                                 youtube_fetch_progress_callback, status,
+                                                                 get_ytdlp_cmd(&st));
+                            if (fetched <= 0) {
+                                snprintf(status, sizeof(status), "Failed to refresh playlist");
+                                break;
+                            }
+
+                            // Overwrite existing playlist items
+                            free_playlist_items(pl);
+                            for (int i = 0; i < fetched; i++) {
+                                pl->items[i] = temp_songs[i];
+                                pl->count++;
+                            }
+                            save_playlist(&st, st.current_playlist_idx);
+                            snprintf(status, sizeof(status), "Refreshed: fetched %d songs", fetched);
+                        } else {
+                            snprintf(status, sizeof(status), "Not a YouTube playlist or missing source URL");
                         }
                         break;
                     
