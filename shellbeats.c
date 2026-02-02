@@ -212,6 +212,7 @@ static void save_config(AppState *st);  // NEW
 static void load_config(AppState *st);  // NEW
 static void save_download_queue(AppState *st);  // NEW
 static void load_download_queue(AppState *st);  // NEW
+static bool rename_playlist(AppState *st, int idx, const char *new_name);  // NEW: rename playlist
 
 // ============================================================================
 // Utility Functions
@@ -1513,6 +1514,81 @@ static bool delete_playlist(AppState *st, int idx) {
     return true;
 }
 
+static bool rename_playlist(AppState *st, int idx, const char *new_name) {
+    if (idx < 0 || idx >= st->playlist_count) return false;
+    if (!new_name || !new_name[0]) return false;
+    
+    Playlist *pl = &st->playlists[idx];
+    
+    // Check for duplicate name (excluding current playlist)
+    for (int i = 0; i < st->playlist_count; i++) {
+        if (i != idx && strcmp(st->playlists[i].name, new_name) == 0) {
+            return false; // Name already exists
+        }
+    }
+    
+    // Generate new filename
+    char *new_filename = sanitize_filename(new_name);
+    if (!new_filename) return false;
+    
+    // Check if new filename conflicts with existing ones (excluding current)
+    for (int i = 0; i < st->playlist_count; i++) {
+        if (i != idx && strcmp(st->playlists[i].filename, new_filename) == 0) {
+            free(new_filename);
+            return false;
+        }
+    }
+    
+    // Rename the playlist JSON file if filename changed
+    if (strcmp(pl->filename, new_filename) != 0) {
+        char old_path[4096];
+        char new_path[4096];
+        snprintf(old_path, sizeof(old_path), "%s/%s", st->playlists_dir, pl->filename);
+        snprintf(new_path, sizeof(new_path), "%s/%s", st->playlists_dir, new_filename);
+        
+        if (file_exists(old_path)) {
+            rename(old_path, new_path);
+        }
+        
+        free(pl->filename);
+        pl->filename = new_filename;
+    } else {
+        free(new_filename);
+    }
+    
+    // Rename the download directory if it exists
+    char old_download_dir[2048];
+    char new_download_dir[2048];
+    snprintf(old_download_dir, sizeof(old_download_dir), "%s/%s", st->config.download_path, pl->name);
+    snprintf(new_download_dir, sizeof(new_download_dir), "%s/%s", st->config.download_path, new_name);
+    
+    if (dir_exists(old_download_dir) && strcmp(old_download_dir, new_download_dir) != 0) {
+        rename(old_download_dir, new_download_dir);
+    }
+    
+    // Update the playlist name
+    free(pl->name);
+    pl->name = strdup(new_name);
+    
+    // Update download queue references for this playlist
+    pthread_mutex_lock(&st->download_queue.mutex);
+    for (int i = 0; i < st->download_queue.count; i++) {
+        if (strcmp(st->download_queue.tasks[i].playlist_name, pl->name) == 0) {
+            strncpy(st->download_queue.tasks[i].playlist_name, new_name, 
+                   sizeof(st->download_queue.tasks[i].playlist_name) - 1);
+            st->download_queue.tasks[i].playlist_name[sizeof(st->download_queue.tasks[i].playlist_name) - 1] = '\0';
+        }
+    }
+    save_download_queue(st);
+    pthread_mutex_unlock(&st->download_queue.mutex);
+    
+    // Save changes
+    save_playlists_index(st);
+    save_playlist(st, idx);
+    
+    return true;
+}
+
 static bool add_song_to_playlist(AppState *st, int playlist_idx, Song *song) {
     if (playlist_idx < 0 || playlist_idx >= st->playlist_count) return false;
     if (!song || !song->video_id) return false;
@@ -2105,7 +2181,7 @@ static void draw_header(AppState *st, int cols) {
             mvprintw(2, 0, "  a: add to playlist | d: download | c: create playlist | f: playlists | S: settings | i: about | q: quit");
             break;
         case VIEW_PLAYLISTS:
-            mvprintw(1, 0, "  Enter: open | d: download all | c: create | p: add YouTube | x: delete");
+            mvprintw(1, 0, "  Enter: open | d: download all | c: create | p: add YouTube | R: rename | x: delete");
             mvprintw(2, 0, "  Esc: back | i: about | q: quit");
             break;
         case VIEW_PLAYLIST_SONGS:
@@ -3468,6 +3544,23 @@ int main(int argc, char *argv[]) {
                         }
                         break;
                     }
+                    
+                    // NEW: Rename playlist
+                    case 'R':
+                        if (st.playlist_count > 0) {
+                            char new_name[128] = {0};
+                            int len = get_string_input(new_name, sizeof(new_name), "New playlist name: ");
+                            if (len > 0) {
+                                if (rename_playlist(&st, st.playlist_selected, new_name)) {
+                                    snprintf(status, sizeof(status), "Renamed to: %s", new_name);
+                                } else {
+                                    snprintf(status, sizeof(status), "Failed to rename (duplicate name?)");
+                                }
+                            } else {
+                                snprintf(status, sizeof(status), "Cancelled");
+                            }
+                        }
+                        break;
                     
                     // NEW: Download entire playlist
                     case 'd':
