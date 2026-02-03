@@ -125,6 +125,10 @@ typedef struct {
     int playing_playlist_idx;
     bool paused;
     
+    // Playback position tracking
+    double playback_pos;      // Current position in seconds
+    double playback_duration; // Total duration in seconds
+    
     // UI state
     ViewMode view;
     int add_to_playlist_selected;
@@ -1663,6 +1667,63 @@ static void mpv_stop_playback(void) {
     mpv_send_command("{\"command\":[\"stop\"]}");
 }
 
+static void mpv_seek(int seconds) {
+    sb_log("[PLAYBACK] mpv_seek: seeking %d seconds", seconds);
+    char cmd[128];
+    snprintf(cmd, sizeof(cmd), "{\"command\":[\"seek\",\"%d\",\"relative\"]}", seconds);
+    mpv_send_command(cmd);
+}
+
+// Get a numeric property from mpv (returns -1 on error)
+static double mpv_get_property_double(const char *property) {
+    if (mpv_ipc_fd < 0) return -1;
+    
+    // Send get_property command
+    char cmd[256];
+    snprintf(cmd, sizeof(cmd), "{\"command\":[\"get_property\",\"%s\"]}\n", property);
+    ssize_t w = write(mpv_ipc_fd, cmd, strlen(cmd));
+    if (w < 0) return -1;
+    
+    // Read response with short timeout using select
+    fd_set fds;
+    struct timeval tv;
+    FD_ZERO(&fds);
+    FD_SET(mpv_ipc_fd, &fds);
+    tv.tv_sec = 0;
+    tv.tv_usec = 50000; // 50ms timeout
+    
+    if (select(mpv_ipc_fd + 1, &fds, NULL, NULL, &tv) <= 0) return -1;
+    
+    char buf[1024];
+    ssize_t n = read(mpv_ipc_fd, buf, sizeof(buf) - 1);
+    if (n <= 0) return -1;
+    buf[n] = '\0';
+    
+    // Parse response - look for "data":VALUE pattern
+    // mpv returns: {"data":123.456,"error":"success"} or {"data":123.456,...}
+    char *data_ptr = strstr(buf, "\"data\":");
+    if (!data_ptr) return -1;
+    data_ptr += 7; // skip "data":
+    
+    // Handle null value
+    if (strncmp(data_ptr, "null", 4) == 0) return -1;
+    
+    double value = atof(data_ptr);
+    return value;
+}
+
+// Update playback position and duration from mpv
+static void mpv_update_playback_time(AppState *st) {
+    if (st->playing_index < 0 || mpv_ipc_fd < 0) {
+        st->playback_pos = -1;
+        st->playback_duration = -1;
+        return;
+    }
+    
+    st->playback_pos = mpv_get_property_double("time-pos");
+    st->playback_duration = mpv_get_property_double("duration");
+}
+
 static void mpv_load_url(const char *url) {
     sb_log("[PLAYBACK] mpv_load_url: loading URL: %s", url);
 
@@ -2083,7 +2144,7 @@ static void draw_header(int cols, ViewMode view) {
     // Line 2-3: Shortcuts (two lines)
     switch (view) {
         case VIEW_SEARCH:
-            mvprintw(1, 0, "  /,s: search | Enter: play | Space: pause | n: next | p: prev | x: stop");
+            mvprintw(1, 0, "  /,s: search | Enter: play | Space: pause | n: next | p: prev | <,>: seek | x: stop");
             mvprintw(2, 0, "  a: add to playlist | d: download | c: create playlist | f: playlists | S: settings | i: about | q: quit");
             break;
         case VIEW_PLAYLISTS:
@@ -2091,7 +2152,7 @@ static void draw_header(int cols, ViewMode view) {
             mvprintw(2, 0, "  Esc: back | i: about | q: quit");
             break;
         case VIEW_PLAYLIST_SONGS:
-            mvprintw(1, 0, "  Enter: play | Space: pause | n: next | p: prev | x: stop");
+            mvprintw(1, 0, "  Enter: play | Space: pause | n: next | p: prev | <,>: seek | x: stop");
             mvprintw(2, 0, "  a: add song | d: download | r: remove | D: download all (YT) | Esc: back | i: about | q: quit");
             break;
         case VIEW_ADD_TO_PLAYLIST:
@@ -2191,7 +2252,19 @@ static void draw_now_playing(AppState *st, int rows, int cols) {
         mvprintw(rows - 1, 0, " Now playing: ");
         attron(A_BOLD);
         
-        int max_np = cols - 35;  // Leave room for download status
+        // Format time string if available
+        char time_str[32] = "";
+        if (st->playback_pos >= 0 && st->playback_duration > 0) {
+            int pos_min = (int)st->playback_pos / 60;
+            int pos_sec = (int)st->playback_pos % 60;
+            int dur_min = (int)st->playback_duration / 60;
+            int dur_sec = (int)st->playback_duration % 60;
+            snprintf(time_str, sizeof(time_str), " [%d:%02d/%d:%02d]", 
+                     pos_min, pos_sec, dur_min, dur_sec);
+        }
+        
+        int time_len = strlen(time_str);
+        int max_np = cols - 35 - time_len;  // Leave room for download status and time
         char npbuf[512];
         strncpy(npbuf, title, sizeof(npbuf) - 1);
         npbuf[sizeof(npbuf) - 1] = '\0';
@@ -2203,6 +2276,11 @@ static void draw_now_playing(AppState *st, int rows, int cols) {
         }
         printw("%s", npbuf);
         attroff(A_BOLD);
+        
+        // Print time
+        if (time_str[0]) {
+            printw("%s", time_str);
+        }
         
         if (st->paused) {
             printw(" [PAUSED]");
@@ -2766,6 +2844,8 @@ static void show_help(void) {
     mvprintw(y++, 6, "Space       Pause/Resume playback");
     mvprintw(y++, 6, "n           Next track");
     mvprintw(y++, 6, "p           Previous track");
+    mvprintw(y++, 6, ", or <      Seek backward 15s");
+    mvprintw(y++, 6, ". or >      Seek forward 15s");
     mvprintw(y++, 6, "x           Stop playback");
     mvprintw(y++, 6, "Up/Down/j/k Navigate list");
     mvprintw(y++, 6, "PgUp/PgDn   Page up/down");
@@ -2966,6 +3046,9 @@ int main(int argc, char *argv[]) {
             }
         }
         
+        // Update playback time from mpv
+        mpv_update_playback_time(&st);
+        
         int ch = getch();
 
         if (ch == ERR) {
@@ -3093,6 +3176,22 @@ int main(int argc, char *argv[]) {
                 if (st.playing_index >= 0) {
                     play_prev(&st);
                     snprintf(status, sizeof(status), "Previous track");
+                }
+                break;
+            
+            case ',':
+            case '<':
+                if (st.playing_index >= 0 && file_exists(IPC_SOCKET)) {
+                    mpv_seek(-15);
+                    snprintf(status, sizeof(status), "Seek -15s");
+                }
+                break;
+            
+            case '.':
+            case '>':
+                if (st.playing_index >= 0 && file_exists(IPC_SOCKET)) {
+                    mpv_seek(15);
+                    snprintf(status, sizeof(status), "Seek +15s");
                 }
                 break;
             
