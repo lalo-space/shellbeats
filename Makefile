@@ -3,7 +3,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -O2 -pthread
 LDFLAGS = -lncurses -pthread
 
-TARGET = shellbeats
+TARGET = shellbeats_zex
 SRC = shellbeats.c youtube_playlist.c
 
 .PHONY: all clean install uninstall
