@@ -487,6 +487,19 @@ static char *json_get_string(const char *json, const char *key) {
     return result;
 }
 
+static int json_get_int(const char *json, const char *key) {
+    char pattern[256];
+    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
+    
+    const char *p = strstr(json, pattern);
+    if (!p) return 0;
+    
+    p += strlen(pattern);
+    while (*p && (*p == ' ' || *p == ':' || *p == '\t')) p++;
+    
+    return atoi(p);
+}
+
 // ============================================================================
 // Config Directory Management
 // ============================================================================
@@ -1238,9 +1251,10 @@ static void save_playlist(AppState *st, int idx) {
         char *escaped_title = json_escape_string(pl->items[i].title);
         char *escaped_id = json_escape_string(pl->items[i].video_id);
         
-        fprintf(f, "    {\"title\": \"%s\", \"video_id\": \"%s\"}%s\n",
+        fprintf(f, "    {\"title\": \"%s\", \"video_id\": \"%s\", \"duration\": %d}%s\n",
                 escaped_title ? escaped_title : "",
                 escaped_id ? escaped_id : "",
+                pl->items[i].duration,
                 (i < pl->count - 1) ? "," : "");
         
         free(escaped_title);
@@ -1319,6 +1333,7 @@ static void load_playlist_songs(AppState *st, int idx) {
         
         char *title = json_get_string(obj, "title");
         char *video_id = json_get_string(obj, "video_id");
+        int duration = json_get_int(obj, "duration");
         
         if (title && video_id && video_id[0]) {
             pl->items[pl->count].title = title;
@@ -1327,7 +1342,7 @@ static void load_playlist_songs(AppState *st, int idx) {
             char url[256];
             snprintf(url, sizeof(url), "https://www.youtube.com/watch?v=%s", video_id);
             pl->items[pl->count].url = strdup(url);
-            pl->items[pl->count].duration = 0;
+            pl->items[pl->count].duration = duration;
             
             pl->count++;
         } else {
@@ -1851,7 +1866,7 @@ static int run_search(AppState *st, const char *raw_query) {
     char cmd[2048];
     snprintf(cmd, sizeof(cmd),
              "%s --flat-playlist --quiet --no-warnings "
-             "--print '%%(title)s|||%%(id)s' "
+             "--print '%%(title)s|||%%(id)s|||%%(duration)s' "
              "\"ytsearch%d:%s\" 2>/dev/null",
              get_ytdlp_cmd(st), MAX_RESULTS, escaped_query);
 
@@ -1877,12 +1892,18 @@ static int run_search(AppState *st, const char *raw_query) {
         if (strncmp(line, "ERROR", 5) == 0) continue;
         if (strncmp(line, "WARNING", 7) == 0) continue;
         
-        char *sep = strstr(line, "|||");
-        if (!sep) continue;
-        *sep = '\0';
+        char *sep1 = strstr(line, "|||");
+        if (!sep1) continue;
+        *sep1 = '\0';
+        
+        char *sep2 = strstr(sep1 + 3, "|||");
+        if (!sep2) continue;
+        *sep2 = '\0';
         
         const char *title = line;
-        const char *video_id = sep + 3;
+        const char *video_id = sep1 + 3;
+        const char *duration_str = sep2 + 3;
+        
         if (!video_id[0]) continue;
         
         size_t id_len = strlen(video_id);
@@ -1895,7 +1916,7 @@ static int run_search(AppState *st, const char *raw_query) {
         snprintf(fullurl, sizeof(fullurl), 
                  "https://www.youtube.com/watch?v=%s", video_id);
         st->search_results[count].url = strdup(fullurl);
-        st->search_results[count].duration = 0;
+        st->search_results[count].duration = atoi(duration_str);
         
         if (st->search_results[count].title && 
             st->search_results[count].video_id &&

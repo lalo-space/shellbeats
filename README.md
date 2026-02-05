@@ -1,4 +1,5 @@
 ## Official website
+
 https://shellbeats.com
 
 [![Make a donation](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/donate/?hosted_button_id=RFY5QFC6XDX5N)
@@ -6,13 +7,15 @@ https://shellbeats.com
 👉 [Playing YouTube from the Command Line – HackaDay](https://hackaday.com/2026/01/31/playing-youtube-from-the-command-line/)## Updates
 
 **v0.5**
+
 - Fixed streaming on systems where mpv couldn't find yt-dlp: mpv now receives the correct yt-dlp path via `--script-opts=ytdl_hook-ytdl_path=...`, so streaming works even when yt-dlp is not in the system PATH.
 - Added detailed playback logging (enabled with `-log` flag). All playback operations are now traced with `[PLAYBACK]` prefix: mpv startup, IPC connection, URL loading, search commands, track end detection, and stream errors. Useful for debugging playback issues on different systems.
 - YouTube Playlist integration is now documented in this README (see below).
 - Some bugfixes.
 
 **v0.4**
-- Now you can download or stream entire playlists from YouTube just by pasting the link in the terminal, thanks to ***kathiravanbtm***.
+
+- Now you can download or stream entire playlists from YouTube just by pasting the link in the terminal, thanks to **_kathiravanbtm_**.
 - Some bugfixes.
 
 # shellbeats V0.5
@@ -172,9 +175,9 @@ You can import entire YouTube playlists into shellbeats, either for streaming or
 
 ### YouTube playlist controls
 
-| Key | Context | Action |
-|-----|---------|--------|
-| `p` | Playlists menu | Import a YouTube playlist |
+| Key | Context                   | Action                             |
+| --- | ------------------------- | ---------------------------------- |
+| `p` | Playlists menu            | Import a YouTube playlist          |
 | `D` | Inside a YouTube playlist | Download all songs in the playlist |
 
 - Imported playlists show a `[YT]` indicator in the UI
@@ -183,7 +186,7 @@ You can import entire YouTube playlists into shellbeats, either for streaming or
 - You can always download later by opening the playlist and pressing `D`
 - Playlist type (youtube/local) is persisted in the JSON file
 
-> YouTube Playlist integration contributed by ***kathiravanbtm***
+> YouTube Playlist integration contributed by **_kathiravanbtm_**
 
 ## Dependencies
 
@@ -207,22 +210,25 @@ When running commands (search, download, streaming), shellbeats uses the local b
 
 Install dependencies:
 
-
 ### Debian/Ubuntu
+
 ```bash
 sudo apt install mpv libncurses-dev yt-dlp
 ```
+
 ### Arch
+
 ```bash
 sudo pacman -S mpv ncurses yt-dlp
 ```
+
 ### macOS (via [Homebrew](https://brew.sh/))
+
 ```bash
 brew install mpv yt-dlp
 ```
+
 > Note: This setup has not been personally tested by the author, but the community confirms there are no compilation issues.
-
-
 
 Build:
 
@@ -230,6 +236,7 @@ Build:
 make
 make install
 ```
+
 binary file will be copied in /usr/local/bin/
 
 Run:
@@ -244,45 +251,45 @@ All shortcuts are now visible in the header when you run shellbeats. Heres the c
 
 ### Playback
 
-| Key | Action |
-|-----|--------|
-| `/` or `s` | Search YouTube |
-| `Enter` | Play selected song |
-| `Space` | Pause/Resume |
-| `n` | Next track |
-| `p` | Previous track |
-| `x` | Stop playback |
-| `q` | Quit |
+| Key        | Action             |
+| ---------- | ------------------ |
+| `/` or `s` | Search YouTube     |
+| `Enter`    | Play selected song |
+| `Space`    | Pause/Resume       |
+| `n`        | Next track         |
+| `p`        | Previous track     |
+| `x`        | Stop playback      |
+| `q`        | Quit               |
 
 ### Navigation
 
-| Key | Action |
-|-----|--------|
-| `↑/↓` or `j/k` | Move selection |
-| `PgUp/PgDn` | Page up/down |
-| `g/G` | Jump to start/end |
-| `Esc` | Go back |
+| Key            | Action            |
+| -------------- | ----------------- |
+| `↑/↓` or `j/k` | Move selection    |
+| `PgUp/PgDn`    | Page up/down      |
+| `g/G`          | Jump to start/end |
+| `Esc`          | Go back           |
 
 ### Playlists
 
-| Key | Action |
-|-----|--------|
-| `f` | Open playlists menu |
-| `a` | Add current song to a playlist |
-| `c` | Create new playlist |
-| `p` | Import YouTube playlist |
-| `r` | Remove song from playlist |
+| Key | Action                                                |
+| --- | ----------------------------------------------------- |
+| `f` | Open playlists menu                                   |
+| `a` | Add current song to a playlist                        |
+| `c` | Create new playlist                                   |
+| `p` | Import YouTube playlist                               |
+| `r` | Remove song from playlist                             |
 | `x` | Delete playlist (including folder & downloaded files) |
-| `d` | Download song or entire playlist |
-| `D` | Download all songs (YouTube playlists) |
+| `d` | Download song or entire playlist                      |
+| `D` | Download all songs (YouTube playlists)                |
 
 ### Other
 
-| Key | Action |
-|-----|--------|
-| `S` | Open settings (configure download path) |
-| `i` | Show about screen |
-| `h` or `?` | Show help |
+| Key        | Action                                  |
+| ---------- | --------------------------------------- |
+| `S`        | Open settings (configure download path) |
+| `i`        | Show about screen                       |
+| `h` or `?` | Show help                               |
 
 ## Features
 
@@ -298,10 +305,12 @@ All shortcuts are now visible in the header when you run shellbeats. Heres the c
 - **Debug Logging**: Detailed playback logs with `-log` flag for troubleshooting
 
 ## BUGS
+
 If you created a playlist in one of previous sessions, then when you save a track to the playlist, it displays the number of already saved tracks as (0).
 Small bug with PAUSE command tracking, sometimes the UI reverts the [PAUSE] message displayed.
 
 ## TODO
+
 Find a way to use an "AI agent" to find the music on Youtube and turn it into a Shellbeats playlist.
 
 Edit playlist name.
@@ -310,8 +319,6 @@ Start Shellbeats from where it was left before (playlist/music/timestmap).
 
 Randomize musics in playlist.
 
-[--:--] never shows duration of the video.
-
 Auto fetch new songs on youtube playlist sync.
 
 Jumping x sec forward/backward (default: 10)
@@ -319,7 +326,6 @@ Jumping x sec forward/backward (default: 10)
 Jumping to time mm:ss
 
 Add support for unicode characters
-
 
 ## License
 
