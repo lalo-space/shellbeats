@@ -1,18 +1,22 @@
 # YouTube Playlist Integration - Implementation Guide
 
 ## Files Created
+
 1. `youtube_playlist.h` - Header with function declarations
 2. `youtube_playlist.c` - Implementation for fetching YouTube playlists
 
 ## Changes Required in shellbeats.c
 
 ### 1. Add Include (after line 21, after #include <dirent.h>)
+
 ```c
 #include "youtube_playlist.h"
 ```
 
 ### 2. Update Playlist Struct (line 45-50)
+
 Replace:
+
 ```c
 typedef struct {
     char *name;
@@ -23,6 +27,7 @@ typedef struct {
 ```
 
 With:
+
 ```c
 typedef struct {
     char *name;
@@ -34,33 +39,43 @@ typedef struct {
 ```
 
 ### 3. Update create_playlist Function Signature
+
 Find: `static int create_playlist(AppState *st, const char *name)`
 Replace with: `static int create_playlist(AppState *st, const char *name, bool is_youtube)`
 
 In the function body, add after `st->playlists[idx].count = 0;`:
+
 ```c
 st->playlists[idx].is_youtube_playlist = is_youtube;
 ```
 
 ### 4. Update All create_playlist Calls
+
 Find all calls to `create_playlist(&st, name)` and add `, false` parameter:
+
 - Line ~2660: `int idx = create_playlist(&st, name, false);`
 - Line ~2730: `int idx = create_playlist(&st, name, false);`
 - Line ~3020: `int idx = create_playlist(&st, name, false);`
 
 ### 5. Update save_playlist Function
+
 In the fprintf that writes the JSON, change:
+
 ```c
 fprintf(f, "{\n  \"name\": \"%s\",\n  \"songs\": [\n", pl->name);
 ```
+
 To:
+
 ```c
 fprintf(f, "{\n  \"name\": \"%s\",\n  \"type\": \"%s\",\n  \"songs\": [\n",
         pl->name, pl->is_youtube_playlist ? "youtube" : "local");
 ```
 
 ### 6. Update load_playlist_songs Function
+
 After parsing the name, add:
+
 ```c
 char *type = json_get_string(content, "type");
 pl->is_youtube_playlist = (type && strcmp(type, "youtube") == 0);
@@ -68,7 +83,9 @@ free(type);
 ```
 
 ### 7. Update play_playlist_song Function
+
 Replace the file check logic with:
+
 ```c
 mpv_start_if_needed();
 
@@ -86,7 +103,9 @@ if (pl->is_youtube_playlist) {
 ```
 
 ### 8. Update draw_playlist_songs_view Function
+
 After printing the playlist name, add:
+
 ```c
 printw("%s", pl->name);
 if (pl->is_youtube_playlist) printw(" [YT]");
@@ -94,22 +113,29 @@ attroff(A_BOLD);
 ```
 
 ### 9. Update draw_header for VIEW_PLAYLISTS
+
 Change:
+
 ```c
 mvprintw(1, 0, "  Enter: open | d: download all | c: create | x: delete");
 ```
+
 To:
+
 ```c
 mvprintw(1, 0, "  Enter: open | d: download all | c: create | p: add YouTube | x: delete");
 ```
 
 ### 10. Update draw_header for VIEW_PLAYLIST_SONGS
+
 Change the second line to:
+
 ```c
 mvprintw(2, 0, "  a: add song | d: download | r: remove | D: download all (YT) | Esc: back | i: about | q: quit");
 ```
 
 ### 11. Add 'p' Key Handler in VIEW_PLAYLISTS (after case 'd':)
+
 ```c
 case 'p': {
     char url[512] = {0};
@@ -122,7 +148,7 @@ case 'p': {
 
         char fetched_title[256] = {0};
         Song temp_songs[MAX_PLAYLIST_ITEMS];
-        int fetched = fetch_youtube_playlist(url, temp_songs, MAX_PLAYLIST_ITEMS, 
+        int fetched = fetch_youtube_playlist(url, temp_songs, MAX_PLAYLIST_ITEMS,
                                              fetched_title, sizeof(fetched_title));
         if (fetched <= 0) {
             snprintf(status, sizeof(status), "Failed to fetch playlist");
@@ -177,12 +203,13 @@ case 'p': {
 ```
 
 ### 12. Add 'D' Key Handler in VIEW_PLAYLIST_SONGS (after case 'r':)
+
 ```c
 case 'D':
     if (pl && pl->is_youtube_playlist && pl->count > 0) {
         int added = 0;
         for (int i = 0; i < pl->count; i++) {
-            int result = add_to_download_queue(&st, pl->items[i].video_id, 
+            int result = add_to_download_queue(&st, pl->items[i].video_id,
                                                pl->items[i].title, pl->name);
             if (result > 0) added++;
         }
@@ -196,17 +223,20 @@ case 'D':
 ```
 
 ## Compilation
+
 ```bash
 gcc shellbeats.c youtube_playlist.c -o shellbeats -lpthread -lncurses
 ```
 
 Or update Makefile:
+
 ```makefile
 shellbeats: shellbeats.c youtube_playlist.c
 	gcc shellbeats.c youtube_playlist.c -o shellbeats -lpthread -lncurses
 ```
 
 ## Testing
+
 1. Press 'f' to open playlists
 2. Press 'p' to add YouTube playlist
 3. Paste a YouTube playlist URL
@@ -216,6 +246,7 @@ shellbeats: shellbeats.c youtube_playlist.c
 7. Open the playlist and press 'D' to download all songs later if needed
 
 ## Key Features
+
 - URL validation for YouTube playlist links
 - **Real-time progress display** during playlist fetching
 - Fetches playlist title and songs via yt-dlp
