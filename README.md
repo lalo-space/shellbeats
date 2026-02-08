@@ -3,7 +3,21 @@ https://shellbeats.com
 
 [![Make a donation](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/donate/?hosted_button_id=RFY5QFC6XDX5N)
 
-👉 [Playing YouTube from the Command Line – HackaDay](https://hackaday.com/2026/01/31/playing-youtube-from-the-command-line/)## Updates
+👉 [Playing YouTube from the Command Line – HackaDay](https://hackaday.com/2026/01/31/playing-youtube-from-the-command-line/)
+
+## Updates
+
+Sorry for the delay. Unfortunately, I only had time over the weekend to work on refactoring and implementing new features. I then got stuck on a request to implement Unicode input/output support, but I ran into difficulties and realized that doing it properly would require introducing an additional dependency, which I would prefer to avoid. Therefore, I kindly ask for your patience regarding the Unicode support.
+
+**v0.6** 
+- Fixed song duration not showing (was displaying `--:--`). Duration now correctly fetched from yt-dlp. Actual playlists have duration null because it's stored on json during download.
+- Added **Shuffle Mode** (`R` key): randomizes playback order within current search results or playlist. Loops infinitely until stopped. Shows `[SHUFFLE]` indicator in status bar.
+- Added **Seek controls**: `Left/Right` arrow keys to seek backward/forward (default 10 seconds, configurable in Settings).
+- Added **Jump to time** (`t` key): input `mm:ss` to jump to specific position in track.
+- Added **Playlist rename** (`e` key): rename playlists including their download folders.
+- Added **Remember Session**: optional setting to restore your last search/playlist on next startup. Caches search results locally.
+- Added **YouTube playlist sync** (`u` key): update imported YouTube playlists with new songs added on YouTube.
+- New Settings options: Seek Step (configurable), Remember Session (toggle), Shuffle Mode (toggle).
 
 **v0.5**
 - Fixed streaming on systems where mpv couldn't find yt-dlp: mpv now receives the correct yt-dlp path via `--script-opts=ytdl_hook-ytdl_path=...`, so streaming works even when yt-dlp is not in the system PATH.
@@ -15,7 +29,7 @@ https://shellbeats.com
 - Now you can download or stream entire playlists from YouTube just by pasting the link in the terminal, thanks to ***kathiravanbtm***.
 - Some bugfixes.
 
-# shellbeats V0.5
+# shellbeats V0.6
 
 ![Demo](shellbeats.gif)
 
@@ -252,6 +266,9 @@ All shortcuts are now visible in the header when you run shellbeats. Heres the c
 | `n` | Next track |
 | `p` | Previous track |
 | `x` | Stop playback |
+| `R` | Toggle shuffle mode |
+| `Left/Right` | Seek backward/forward |
+| `t` | Jump to time (mm:ss) |
 | `q` | Quit |
 | '-' | Volume down |
 | '=' | Volume up |
@@ -271,6 +288,7 @@ All shortcuts are now visible in the header when you run shellbeats. Heres the c
 | `f` | Open playlists menu |
 | `a` | Add current song to a playlist |
 | `c` | Create new playlist |
+| `e` | Rename playlist |
 | `p` | Import YouTube playlist |
 | `r` | Remove song from playlist |
 | `x` | Delete playlist (including folder & downloaded files) |
@@ -281,9 +299,18 @@ All shortcuts are now visible in the header when you run shellbeats. Heres the c
 
 | Key | Action |
 |-----|--------|
-| `S` | Open settings (configure download path) |
+| `S` | Open settings |
 | `i` | Show about screen |
 | `h` or `?` | Show help |
+
+### Settings
+
+| Option | Description |
+|--------|-------------|
+| Download Path | Where downloaded songs are saved |
+| Seek Step | Seconds to skip with Left/Right keys (default: 10) |
+| Remember Session | Restore last search/playlist on startup |
+| Shuffle Mode | Randomize playback order |
 
 ## Features
 
@@ -291,6 +318,9 @@ All shortcuts are now visible in the header when you run shellbeats. Heres the c
 - **Smart Playback**: Automatically plays from disk when available
 - **Background Downloads**: Keep using the app while downloads run
 - **YouTube Playlists**: Import entire playlists for streaming or download
+- **Shuffle Mode**: Randomize playback with infinite loop, shows `[SHUFFLE]` indicator
+- **Seek Controls**: Jump forward/backward by configurable seconds, or to specific time
+- **Session Memory**: Optionally restore your last search or playlist on startup
 - **Visual Feedback**: `[D]` marker shows downloaded songs, `[YT]` marks YouTube playlists, spinner shows active downloads
 - **Organized Storage**: Each playlist gets its own folder
 - **Clean Deletion**: Removing a playlist deletes its folder and all files
@@ -302,9 +332,13 @@ All shortcuts are now visible in the header when you run shellbeats. Heres the c
 > Volume control added by **nhampton20**
 ## BUGS
 If you created a playlist in one of previous sessions, then when you save a track to the playlist, it displays the number of already saved tracks as (0).
+Small bug with PAUSE command tracking, sometimes the UI reverts the [PAUSE] message displayed.
 
 ## TODO
-Find a way to use an "AI agent" to find the music on Youtube and turn it into a Shellbeats playlist
+Find a way to use an "AI agent" to find the music on Youtube and turn it into a Shellbeats playlist.
+
+Add support for unicode characters (had some problems was in 0.6 wishlist sorry)
+
 
 ## License
 
