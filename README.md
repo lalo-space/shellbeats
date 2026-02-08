@@ -253,7 +253,8 @@ All shortcuts are now visible in the header when you run shellbeats. Heres the c
 | `p` | Previous track |
 | `x` | Stop playback |
 | `q` | Quit |
-
+| '-' | Volume down |
+| '=' | Volume up |
 ### Navigation
 
 | Key | Action |
@@ -296,7 +297,9 @@ All shortcuts are now visible in the header when you run shellbeats. Heres the c
 - **Persistent Queue**: Resume interrupted downloads on restart
 - **Duplicate Prevention**: Won't download the same song twice
 - **Debug Logging**: Detailed playback logs with `-log` flag for troubleshooting
+- **Volume control**: Volume is displayed and can be adjusted 
 
+> Volume control added by **nhampton20**
 ## BUGS
 If you created a playlist in one of previous sessions, then when you save a track to the playlist, it displays the number of already saved tracks as (0).
 
