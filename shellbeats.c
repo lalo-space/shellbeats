@@ -2447,7 +2447,7 @@ static void draw_now_playing(AppState *st, int rows, int cols) {
             printw(" [SHUFFLE]");
         }
         if (st->volume >= 0) {
-            printw("Volume: %f", st->volume);
+            printw(" Volume: %f", st->volume);
         }
     }
 
