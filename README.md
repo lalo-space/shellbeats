@@ -340,6 +340,8 @@ Manage cookie from browser.
 
 Add support for unicode characters (had some problems was in 0.6 wishlist sorry).
 
+Add a check for $XDG_CONFIG_HOME
+
 
 ## License
 
