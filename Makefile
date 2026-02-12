@@ -1,7 +1,7 @@
 # ShellBeats Makefile
 CC = gcc
 CFLAGS = -Wall -Wextra -O2 -pthread
-LDFLAGS = -lncurses -pthread
+LDFLAGS = -lncursesw -pthread
 
 TARGET = shellbeats
 SRC = shellbeats.c youtube_playlist.c
