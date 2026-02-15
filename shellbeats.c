@@ -52,6 +52,7 @@ typedef struct {
     Song items[MAX_PLAYLIST_ITEMS];
     int count;
     bool is_youtube_playlist;
+    char* youtube_playlist_url;  // only set if is_youtube_playlist is true
 } Playlist;
 
 // NEW: Configuration structure
@@ -1379,9 +1380,13 @@ static void save_playlist(AppState *st, int idx) {
     
     FILE *f = fopen(path, "w");
     if (!f) return;
-    
-    fprintf(f, "{\n  \"name\": \"%s\",\n  \"type\": \"%s\",\n  \"songs\": [\n",
-            pl->name, pl->is_youtube_playlist ? "youtube" : "local");
+
+    char *escaped_src = json_escape_string(pl->youtube_playlist_url);
+
+    fprintf(f, "{\n  \"name\": \"%s\",\n  \"type\": \"%s\",\n  \"playlist_url\": \"%s\",\n  \"songs\": [\n",
+        pl->name, pl->is_youtube_playlist ? "youtube" : "local", escaped_src ? escaped_src : "");
+
+    free(escaped_src);
     
     for (int i = 0; i < pl->count; i++) {
         char *escaped_title = json_escape_string(pl->items[i].title);
@@ -1437,6 +1442,14 @@ static void load_playlist_songs(AppState *st, int idx) {
     char *type = json_get_string(content, "type");
     pl->is_youtube_playlist = (type && strcmp(type, "youtube") == 0);
     free(type);
+
+    char *src = json_get_string(content, "playlist_url");
+    if (src && src[0] && pl->is_youtube_playlist) {
+        pl->youtube_playlist_url = src; // take ownership
+    } else {
+        free(src);
+        pl->youtube_playlist_url = NULL;
+    }
     
     // Parse songs array - simple approach
     const char *p = strstr(content, "\"songs\"");
@@ -1602,6 +1615,7 @@ static int create_playlist(AppState *st, const char *name, bool is_youtube) {
     st->playlists[idx].filename = filename;
     st->playlists[idx].count = 0;
     st->playlists[idx].is_youtube_playlist = is_youtube;
+    st->playlists[idx].youtube_playlist_url = NULL;
     st->playlist_count++;
     
     save_playlists_index(st);
@@ -3819,6 +3833,8 @@ int main(int argc, char *argv[]) {
                             }
 
                             Playlist *pl = &st.playlists[idx];
+                            if (pl->youtube_playlist_url) free(pl->youtube_playlist_url);
+                            pl->youtube_playlist_url = strdup(url);
                             for (int i = 0; i < fetched; i++) {
                                 pl->items[i] = temp_songs[i];
                                 pl->count++;
@@ -3974,11 +3990,26 @@ int main(int argc, char *argv[]) {
                             draw_ui(&st, status);
 
                             char fetch_url[512] = {0};
-                            // For now, ask user to paste URL again
-                            int len = get_string_input(fetch_url, sizeof(fetch_url),
-                                "YouTube playlist URL to sync: ");
+                            int len = 0;
+                            bool use_stored_url = false;
 
-                            if (len > 0 && validate_youtube_playlist_url(fetch_url)) {
+                            // Use stored YouTube playlist URL if available
+                            if (pl->youtube_playlist_url && pl->youtube_playlist_url[0]) {
+                                strncpy(fetch_url, pl->youtube_playlist_url, sizeof(fetch_url) - 1);
+                                fetch_url[sizeof(fetch_url) - 1] = '\0';
+                                len = strlen(fetch_url);
+                                use_stored_url = true;
+                            } else {
+                                // Ask user to input URL if not stored
+                                len = get_string_input(fetch_url, sizeof(fetch_url),
+                                    "YouTube playlist URL to sync: ");
+                                if (len == 0) {
+                                    snprintf(status, sizeof(status), "Sync cancelled");
+                                    break;
+                                }
+                            }
+
+                            if (validate_youtube_playlist_url(fetch_url)) {
                                 char fetched_title[256] = {0};
                                 Song temp_songs[MAX_PLAYLIST_ITEMS];
                                 int fetched = fetch_youtube_playlist(fetch_url, temp_songs, MAX_PLAYLIST_ITEMS,
@@ -4024,10 +4055,13 @@ int main(int argc, char *argv[]) {
                                         free(temp_songs[i].url);
                                     }
 
+                                    pl->youtube_playlist_url = strdup(fetch_url);
+
                                     if (new_count > 0) {
                                         save_playlist(&st, st.current_playlist_idx);
                                         snprintf(status, sizeof(status), "Added %d new songs", new_count);
                                     } else {
+                                        if (!use_stored_url) save_playlist(&st, st.current_playlist_idx);
                                         snprintf(status, sizeof(status), "Playlist is up to date");
                                     }
                                 } else {
