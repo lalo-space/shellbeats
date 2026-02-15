@@ -1317,6 +1317,10 @@ static void free_playlist(Playlist *pl) {
     free(pl->filename);
     pl->name = NULL;
     pl->filename = NULL;
+    if (pl->youtube_playlist_url) {
+        free(pl->youtube_playlist_url);
+        pl->youtube_playlist_url = NULL;
+    }
     free_playlist_items(pl);
 }
 
@@ -4055,6 +4059,7 @@ int main(int argc, char *argv[]) {
                                         free(temp_songs[i].url);
                                     }
 
+                                    if (pl->youtube_playlist_url) free(pl->youtube_playlist_url);
                                     pl->youtube_playlist_url = strdup(fetch_url);
 
                                     if (new_count > 0) {
