@@ -3183,7 +3183,7 @@ int main(int argc, char *argv[]) {
                 st.cached_search[i].url = NULL;
             }
             st.search_count = st.cached_search_count;
-            strncpy(st.query, st.last_query, sizeof(st.query) - 1);
+            snprintf(st.query, sizeof(st.query), "%s", st.last_query);
             if (st.last_song_idx >= 0 && st.last_song_idx < st.search_count) {
                 st.search_selected = st.last_song_idx;
             }
@@ -4185,7 +4185,7 @@ int main(int argc, char *argv[]) {
             st.last_playlist_idx = -1;
             st.last_song_idx = st.search_selected;
             // Cache current search results
-            strncpy(st.last_query, st.query, sizeof(st.last_query) - 1);
+            snprintf(st.last_query, sizeof(st.last_query), "%s", st.query);
             st.cached_search_count = st.search_count;
             for (int i = 0; i < st.search_count && i < MAX_RESULTS; i++) {
                 // Free any existing cached data
