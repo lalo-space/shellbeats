@@ -102,6 +102,12 @@ typedef enum {
     VIEW_ABOUT
 } ViewMode;
 
+typedef enum {
+    REPEAT_OFF = 0,
+    REPEAT_ALL = 1,
+    REPEAT_ONE = 2
+} RepeatMode;
+
 typedef struct {
     // Search results
     Song search_results[MAX_RESULTS];
@@ -174,6 +180,7 @@ typedef struct {
 
     // Shuffle mode
     bool shuffle_mode;
+    RepeatMode repeat_mode;
 
     // Seek step in seconds (configurable)
     int seek_step;
@@ -766,6 +773,24 @@ static void stop_ytdlp_update(AppState *st) {
     st->ytdlp_update_thread_running = false;
 }
 
+static const char *repeat_mode_label(RepeatMode mode) {
+    switch (mode) {
+        case REPEAT_ALL: return "ALL";
+        case REPEAT_ONE: return "ONE";
+        case REPEAT_OFF:
+        default: return "OFF";
+    }
+}
+
+static RepeatMode next_repeat_mode(RepeatMode mode) {
+    switch (mode) {
+        case REPEAT_OFF: return REPEAT_ALL;
+        case REPEAT_ALL: return REPEAT_ONE;
+        case REPEAT_ONE:
+        default: return REPEAT_OFF;
+    }
+}
+
 // ============================================================================
 // NEW: Configuration Persistence
 // ============================================================================
@@ -797,6 +822,7 @@ static void save_config(AppState *st) {
     fprintf(f, "  \"seek_step\": %d,\n", st->config.seek_step);
     fprintf(f, "  \"remember_session\": %s,\n", st->config.remember_session ? "true" : "false");
     fprintf(f, "  \"shuffle_mode\": %s,\n", st->shuffle_mode ? "true" : "false");
+    fprintf(f, "  \"repeat_mode\": %d,\n", (int)st->repeat_mode);
 
     // Session state (only saved if remember_session is enabled)
     if (st->config.remember_session) {
@@ -865,6 +891,7 @@ static void load_config(AppState *st) {
     st->config.seek_step = 10;
     st->config.remember_session = false;
     st->shuffle_mode = false;
+    st->repeat_mode = REPEAT_OFF;
     st->last_query[0] = '\0';
     st->cached_search_count = 0;
     st->last_playlist_idx = -1;
@@ -913,6 +940,9 @@ static void load_config(AppState *st) {
 
     st->config.remember_session = json_get_bool(content, "remember_session", false);
     st->shuffle_mode = json_get_bool(content, "shuffle_mode", false);
+    int repeat_mode = json_get_int(content, "repeat_mode", REPEAT_OFF);
+    if (repeat_mode < REPEAT_OFF || repeat_mode > REPEAT_ONE) repeat_mode = REPEAT_OFF;
+    st->repeat_mode = (RepeatMode)repeat_mode;
 
     // Parse session state
     char *last_query = json_get_string(content, "last_query");
@@ -2187,6 +2217,24 @@ static int get_random_index(int count, int current) {
 static void play_next(AppState *st) {
     sb_log("[PLAYBACK] play_next: current index=%d, from_playlist=%d, playlist_idx=%d, shuffle=%d",
            st->playing_index, st->playing_from_playlist, st->playing_playlist_idx, st->shuffle_mode);
+    RepeatMode effective_repeat = st->repeat_mode;
+    if (!st->playing_from_playlist && effective_repeat == REPEAT_ALL) {
+        // Search results only support OFF or ONE repeat behavior.
+        effective_repeat = REPEAT_OFF;
+    }
+
+    if (effective_repeat == REPEAT_ONE && st->playing_index >= 0) {
+        sb_log("[PLAYBACK] play_next: repeat-one mode, replaying current track");
+        if (st->playing_from_playlist && st->playing_playlist_idx >= 0) {
+            play_playlist_song(st, st->playing_playlist_idx, st->playing_index);
+            st->playlist_song_selected = st->playing_index;
+        } else {
+            play_search_result(st, st->playing_index);
+            st->search_selected = st->playing_index;
+        }
+        return;
+    }
+
     if (st->playing_from_playlist && st->playing_playlist_idx >= 0) {
         Playlist *pl = &st->playlists[st->playing_playlist_idx];
         int next;
@@ -2200,6 +2248,10 @@ static void play_next(AppState *st) {
             sb_log("[PLAYBACK] play_next: advancing to playlist song #%d/%d", next, pl->count);
             play_playlist_song(st, st->playing_playlist_idx, next);
             st->playlist_song_selected = next;
+        } else if (effective_repeat == REPEAT_ALL && pl->count > 0) {
+            sb_log("[PLAYBACK] play_next: repeat-all mode, wrapping playlist to start");
+            play_playlist_song(st, st->playing_playlist_idx, 0);
+            st->playlist_song_selected = 0;
         } else if (st->shuffle_mode) {
             // In shuffle mode, loop back
             next = get_random_index(pl->count, st->playing_index);
@@ -2208,6 +2260,10 @@ static void play_next(AppState *st) {
             st->playlist_song_selected = next;
         } else {
             sb_log("[PLAYBACK] play_next: already at last song in playlist (%d/%d)", st->playing_index, pl->count);
+            st->playing_index = -1;
+            st->playing_from_playlist = false;
+            st->playing_playlist_idx = -1;
+            st->paused = false;
         }
     } else if (st->search_count > 0) {
         int next;
@@ -2229,6 +2285,10 @@ static void play_next(AppState *st) {
             st->search_selected = next;
         } else {
             sb_log("[PLAYBACK] play_next: already at last search result (%d/%d)", st->playing_index, st->search_count);
+            st->playing_index = -1;
+            st->playing_from_playlist = false;
+            st->playing_playlist_idx = -1;
+            st->paused = false;
         }
     }
 }
@@ -2286,7 +2346,7 @@ static void draw_header(int cols, ViewMode view) {
     // Line 2-3: Shortcuts (two lines)
     switch (view) {
         case VIEW_SEARCH:
-            mvprintw(1, 0, "  /,s: search | Enter: play | Space: pause | n/p: next/prev | R: shuffle | t: jump");
+            mvprintw(1, 0, "  /,s: search | Enter: play | Space: pause | n/p: next/prev | R: shuffle | L: repeat | t: jump");
             mvprintw(2, 0, "  Left/Right: seek | a: add | d: download | f: playlists | S: settings | q: quit");
             break;
         case VIEW_PLAYLISTS:
@@ -2294,7 +2354,7 @@ static void draw_header(int cols, ViewMode view) {
             mvprintw(2, 0, "  Esc: back | i: about | q: quit");
             break;
         case VIEW_PLAYLIST_SONGS:
-            mvprintw(1, 0, "  Enter: play | Space: pause | n/p: next/prev | R: shuffle | t: jump | Left/Right: seek");
+            mvprintw(1, 0, "  Enter: play | Space: pause | n/p: next/prev | R: shuffle | L: repeat | t: jump | Left/Right: seek");
             mvprintw(2, 0, "  a: add | d: download | r: remove | D: download all | u: sync YT | Esc: back | q: quit");
             break;
         case VIEW_ADD_TO_PLAYLIST:
@@ -2412,6 +2472,13 @@ static void draw_now_playing(AppState *st, int rows, int cols) {
         }
         if (st->shuffle_mode) {
             printw(" [SHUFFLE]");
+        }
+        RepeatMode effective_repeat = st->repeat_mode;
+        if (!st->playing_from_playlist && effective_repeat == REPEAT_ALL) {
+            effective_repeat = REPEAT_OFF;
+        }
+        if (effective_repeat != REPEAT_OFF) {
+            printw(" [REPEAT:%s]", repeat_mode_label(effective_repeat));
         }
     }
     
@@ -2781,6 +2848,13 @@ static void draw_settings_view(AppState *st, const char *status, int rows, int c
     if (is_selected) attroff(A_REVERSE);
     y += 2;
 
+    // Setting 4: Repeat Mode
+    is_selected = (st->settings_selected == 4);
+    if (is_selected) attron(A_REVERSE);
+    mvprintw(y, 2, "Repeat Mode: %s", repeat_mode_label(st->repeat_mode));
+    if (is_selected) attroff(A_REVERSE);
+    y += 2;
+
     // Help text
     mvprintw(y, 2, "Up/Down: navigate | Enter: edit/toggle | Esc: back");
     y++;
@@ -2994,6 +3068,7 @@ static void show_help(void) {
     mvprintw(y++, 6, "n/p         Next/Previous track");
     mvprintw(y++, 6, "x           Stop playback");
     mvprintw(y++, 6, "R           Toggle shuffle mode");
+    mvprintw(y++, 6, "L           Cycle repeat (OFF/ALL/ONE)");
     mvprintw(y++, 6, "Left/Right  Seek backward/forward");
     mvprintw(y++, 6, "t           Jump to time (mm:ss)");
     y++;
@@ -3379,7 +3454,14 @@ int main(int argc, char *argv[]) {
 
             case 'R': // Toggle shuffle mode
                 st.shuffle_mode = !st.shuffle_mode;
+                save_config(&st);
                 snprintf(status, sizeof(status), "Shuffle: %s", st.shuffle_mode ? "ON" : "OFF");
+                break;
+
+            case 'L': // Cycle repeat mode
+                st.repeat_mode = next_repeat_mode(st.repeat_mode);
+                save_config(&st);
+                snprintf(status, sizeof(status), "Repeat: %s", repeat_mode_label(st.repeat_mode));
                 break;
 
             case KEY_LEFT:
@@ -4122,7 +4204,7 @@ int main(int argc, char *argv[]) {
 
                     case KEY_DOWN:
                     case 'j':
-                        if (st.settings_selected < 3) st.settings_selected++;
+                        if (st.settings_selected < 4) st.settings_selected++;
                         break;
 
                     case '\n':
@@ -4158,8 +4240,15 @@ int main(int argc, char *argv[]) {
                         } else if (st.settings_selected == 3) {
                             // Shuffle mode - toggle
                             st.shuffle_mode = !st.shuffle_mode;
+                            save_config(&st);
                             snprintf(status, sizeof(status), "Shuffle: %s",
                                      st.shuffle_mode ? "ON" : "OFF");
+                        } else if (st.settings_selected == 4) {
+                            // Repeat mode - cycle
+                            st.repeat_mode = next_repeat_mode(st.repeat_mode);
+                            save_config(&st);
+                            snprintf(status, sizeof(status), "Repeat: %s",
+                                     repeat_mode_label(st.repeat_mode));
                         }
                         break;
                 }

@@ -267,6 +267,7 @@ All shortcuts are now visible in the header when you run shellbeats. Heres the c
 | `p` | Previous track |
 | `x` | Stop playback |
 | `R` | Toggle shuffle mode |
+| `L` | Cycle repeat mode (OFF/ALL/ONE) |
 | `Left/Right` | Seek backward/forward |
 | `t` | Jump to time (mm:ss) |
 | `q` | Quit |
@@ -310,6 +311,7 @@ All shortcuts are now visible in the header when you run shellbeats. Heres the c
 | Seek Step | Seconds to skip with Left/Right keys (default: 10) |
 | Remember Session | Restore last search/playlist on startup |
 | Shuffle Mode | Randomize playback order |
+| Repeat Mode | Playback repeat state: OFF, ALL, or ONE |
 
 ## Features
 
@@ -318,6 +320,7 @@ All shortcuts are now visible in the header when you run shellbeats. Heres the c
 - **Background Downloads**: Keep using the app while downloads run
 - **YouTube Playlists**: Import entire playlists for streaming or download
 - **Shuffle Mode**: Randomize playback with infinite loop, shows `[SHUFFLE]` indicator
+- **Repeat Mode**: `ALL` loops queue/playlist, `ONE` repeats current track, shows `[REPEAT:*]`
 - **Seek Controls**: Jump forward/backward by configurable seconds, or to specific time
 - **Session Memory**: Optionally restore your last search or playlist on startup
 - **Visual Feedback**: `[D]` marker shows downloaded songs, `[YT]` marks YouTube playlists, spinner shows active downloads
