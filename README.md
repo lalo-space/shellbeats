@@ -219,6 +219,13 @@ When running commands (search, download, streaming), shellbeats uses the local b
 
 ## Setup
 
+### openSUSE Tumbleweed
+The package is officially available in the Tumbleweed repositories. You can install it directly via `zypper`:
+
+```bash
+sudo zypper in shellbeats
+```
+
 Install dependencies:
 
 
