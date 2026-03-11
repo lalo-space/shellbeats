@@ -206,6 +206,7 @@ You can import entire YouTube playlists into shellbeats, either for streaming or
 - `ncurses` - terminal UI
 - `pthread` - background downloads
 - `curl` or `wget` - needed for yt-dlp auto-update (at least one must be installed)
+- `deno` or `node` - **recommended**: JavaScript runtime needed by yt-dlp to solve YouTube's anti-bot challenges (see below)
 
 ### yt-dlp auto-update
 
@@ -217,6 +218,19 @@ shellbeats manages its own local copy of yt-dlp independently from the system on
 
 When running commands (search, download, streaming), shellbeats uses the local binary if available, otherwise falls back to the system `yt-dlp`. This means the system-installed `yt-dlp` package is only needed as a safety net — shellbeats will keep itself up to date automatically as long as `curl` or `wget` is present.
 
+### JavaScript runtime for yt-dlp
+
+YouTube uses anti-bot challenges that yt-dlp needs a JavaScript runtime to solve. Without one, some videos will fail with "This video is not available" while others work fine (it depends on which YouTube API path yt-dlp falls back to).
+
+**Install deno** (recommended, enabled by default in yt-dlp):
+```bash
+curl -fsSL https://deno.land/install.sh | sh
+```
+
+Alternatively, `node` (via nvm or system package) or `bun` also work. See the [yt-dlp EJS wiki](https://github.com/yt-dlp/yt-dlp/wiki/EJS) for details.
+
+shellbeats automatically adds common install locations (`~/.deno/bin`, nvm paths, `~/.local/bin`) to PATH at startup, so runtimes installed in user-local directories will be found by yt-dlp even if they're not in the system PATH.
+
 ## Setup
 
 Install dependencies:
@@ -225,14 +239,20 @@ Install dependencies:
 ### Debian/Ubuntu
 ```bash
 sudo apt install mpv libncurses-dev yt-dlp
+curl -fsSL https://deno.land/install.sh | sh
+```
+### Fedora
+```bash
+sudo dnf install mpv ncurses-devel yt-dlp
+curl -fsSL https://deno.land/install.sh | sh
 ```
 ### Arch
 ```bash
-sudo pacman -S mpv ncurses yt-dlp
+sudo pacman -S mpv ncurses yt-dlp deno
 ```
 ### macOS (via [Homebrew](https://brew.sh/))
 ```bash
-brew install mpv yt-dlp
+brew install mpv yt-dlp deno
 ```
 > Note: This setup has not been personally tested by the author, but the community confirms there are no compilation issues.
 

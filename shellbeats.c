@@ -3069,8 +3069,75 @@ static bool check_dependencies(AppState *st, char *errmsg, size_t errsz) {
 // Main
 // ============================================================================
 
+// Ensure JS runtimes (deno, node) are discoverable by yt-dlp.
+// Users often install these in home-directory locations that may not be in
+// the inherited PATH when shellbeats is launched from a desktop environment.
+static void augment_path_for_js_runtimes(void) {
+    const char *home = getenv("HOME");
+    if (!home) return;
+
+    const char *current_path = getenv("PATH");
+    if (!current_path) current_path = "/usr/bin:/bin";
+
+    // Common install locations for JS runtimes
+    char deno_dir[1024], local_bin[1024];
+    snprintf(deno_dir, sizeof(deno_dir), "%s/.deno/bin", home);
+    snprintf(local_bin, sizeof(local_bin), "%s/.local/bin", home);
+
+    // Also check for nvm-managed node
+    char nvm_dir[1024];
+    snprintf(nvm_dir, sizeof(nvm_dir), "%s/.nvm/versions/node", home);
+    char nvm_node_bin[1024] = {0};
+    if (dir_exists(nvm_dir)) {
+        // Find the latest installed node version
+        DIR *d = opendir(nvm_dir);
+        if (d) {
+            struct dirent *entry;
+            char latest[256] = {0};
+            while ((entry = readdir(d)) != NULL) {
+                if (entry->d_name[0] == 'v') {
+                    if (!latest[0] || strcmp(entry->d_name, latest) > 0) {
+                        strncpy(latest, entry->d_name, sizeof(latest) - 1);
+                    }
+                }
+            }
+            closedir(d);
+            if (latest[0]) {
+                snprintf(nvm_node_bin, sizeof(nvm_node_bin), "%s/%s/bin", nvm_dir, latest);
+            }
+        }
+    }
+
+    // Build augmented PATH (prepend so user installs take priority)
+    size_t new_len = strlen(current_path) + strlen(deno_dir) + strlen(local_bin) +
+                     strlen(nvm_node_bin) + 16;
+    char *new_path = malloc(new_len);
+    if (!new_path) return;
+
+    new_path[0] = '\0';
+    if (dir_exists(deno_dir)) {
+        strcat(new_path, deno_dir);
+        strcat(new_path, ":");
+    }
+    if (nvm_node_bin[0] && dir_exists(nvm_node_bin)) {
+        strcat(new_path, nvm_node_bin);
+        strcat(new_path, ":");
+    }
+    if (dir_exists(local_bin)) {
+        strcat(new_path, local_bin);
+        strcat(new_path, ":");
+    }
+    strcat(new_path, current_path);
+
+    setenv("PATH", new_path, 1);
+    free(new_path);
+}
+
 int main(int argc, char *argv[]) {
     setlocale(LC_ALL, "");
+
+    // Ensure JS runtimes are findable by yt-dlp child processes
+    augment_path_for_js_runtimes();
 
     // Initialize random seed for shuffle mode
     srand((unsigned int)time(NULL));
