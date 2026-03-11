@@ -4,7 +4,7 @@ CFLAGS = -Wall -Wextra -O2 -pthread
 LDFLAGS = -lncurses -pthread
 
 TARGET = shellbeats
-SRC = shellbeats.c youtube_playlist.c
+SRC = shellbeats.c youtube_playlist.c i18n.c
 
 .PHONY: all clean install uninstall
 

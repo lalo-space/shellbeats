@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "youtube_playlist.h"
+#include "i18n.h"
 
 int fetch_youtube_playlist(const char *url, Song *songs, int max_songs,
                            char *playlist_title, size_t title_size,
@@ -14,7 +15,7 @@ int fetch_youtube_playlist(const char *url, Song *songs, int max_songs,
 
     // Report: Fetching playlist title
     if (progress_callback) {
-        progress_callback(0, "Fetching playlist info...", callback_data);
+        progress_callback(0, tr(STR_FETCHING_INFO), callback_data);
     }
 
     char title_cmd[2048];
@@ -43,7 +44,7 @@ int fetch_youtube_playlist(const char *url, Song *songs, int max_songs,
 
     // Report: Fetching songs
     if (progress_callback) {
-        progress_callback(0, "Fetching songs...", callback_data);
+        progress_callback(0, tr(STR_FETCHING_SONGS), callback_data);
     }
 
     char cmd[2048];
@@ -92,7 +93,7 @@ int fetch_youtube_playlist(const char *url, Song *songs, int max_songs,
             // Report progress every 10 songs
             if (progress_callback && (count % 10 == 0 || count == 1)) {
                 char msg[128];
-                snprintf(msg, sizeof(msg), "Fetched %d songs...", count);
+                snprintf(msg, sizeof(msg), tr(STR_FETCHED_FMT), count);
                 progress_callback(count, msg, callback_data);
             }
         } else {
@@ -108,7 +109,7 @@ int fetch_youtube_playlist(const char *url, Song *songs, int max_songs,
     // Report: Complete
     if (progress_callback && count > 0) {
         char msg[128];
-        snprintf(msg, sizeof(msg), "Completed! Fetched %d songs", count);
+        snprintf(msg, sizeof(msg), tr(STR_FETCH_COMPLETE_FMT), count);
         progress_callback(count, msg, callback_data);
     }
     
