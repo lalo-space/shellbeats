@@ -38,6 +38,7 @@
 #define MAX_DOWNLOAD_QUEUE 1000  // NEW: max download queue size
 #define YTDLP_BIN_DIR "bin"
 #define YTDLP_BINARY "yt-dlp"
+#define MAX_CONSECUTIVE_ERRORS 3
 #define YTDLP_VERSION_FILE "yt-dlp.version"
 
 // ============================================================================
@@ -172,6 +173,9 @@ typedef struct {
     int spinner_frame;
     time_t last_spinner_update;
 
+    // Playback error tracking
+    int consecutive_errors;
+
     // Shuffle mode
     bool shuffle_mode;
 
@@ -194,6 +198,7 @@ typedef struct {
 
 static pid_t mpv_pid = -1;
 static int mpv_ipc_fd = -1;
+static char mpv_last_error[256] = "";
 static volatile sig_atomic_t got_sigchld = 0;
 
 // NEW: Global pointer for download thread access
@@ -1936,39 +1941,53 @@ static void mpv_quit(void) {
     sb_log("[PLAYBACK] mpv_quit: cleanup complete");
 }
 
-// Check if mpv finished playing (returns true if track ended)
-// Only returns true for genuine end-of-file, not loading states
-static bool mpv_check_track_end(void) {
-    if (mpv_ipc_fd < 0) return false;
+static void extract_mpv_file_error(const char *buf) {
+    mpv_last_error[0] = '\0';
+    char *fe = strstr(buf, "\"file_error\":\"");
+    if (!fe) return;
+    fe += 14;
+    char *end = strchr(fe, '"');
+    if (!end) return;
+    size_t len = (size_t)(end - fe);
+    if (len >= sizeof(mpv_last_error))
+        len = sizeof(mpv_last_error) - 1;
+    memcpy(mpv_last_error, fe, len);
+    mpv_last_error[len] = '\0';
+}
+
+// Check if mpv finished playing
+// Returns: 0 = still playing, 1 = track ended (EOF), 2 = track ended with error
+static int mpv_check_track_end(void) {
+    if (mpv_ipc_fd < 0) return 0;
 
     char buf[4096];
     ssize_t n = read(mpv_ipc_fd, buf, sizeof(buf) - 1);
 
     if (n <= 0) {
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
-            // Connection lost
             sb_log("[PLAYBACK] mpv_check_track_end: connection lost: %s (errno=%d)", strerror(errno), errno);
             mpv_disconnect();
         }
-        return false;
+        return 0;
     }
 
     buf[n] = '\0';
     sb_log("[PLAYBACK] mpv_check_track_end: IPC data received (%zd bytes): %.200s", n, buf);
 
-    // Only trigger on end-file event with reason "eof" (not "error" or "stop")
-    // Format: {"event":"end-file","reason":"eof",...}
-    if (strstr(buf, "\"event\":\"end-file\"") && strstr(buf, "\"reason\":\"eof\"")) {
-        sb_log("[PLAYBACK] mpv_check_track_end: track ended (EOF)");
-        return true;
+    if (strstr(buf, "\"event\":\"end-file\"")) {
+        if (strstr(buf, "\"reason\":\"eof\"")) {
+            sb_log("[PLAYBACK] mpv_check_track_end: track ended (EOF)");
+            return 1;
+        }
+        if (strstr(buf, "\"reason\":\"error\"")) {
+            extract_mpv_file_error(buf);
+            sb_log("[PLAYBACK] mpv_check_track_end: track ended with ERROR: %s",
+                   mpv_last_error[0] ? mpv_last_error : "(unknown)");
+            return 2;
+        }
     }
 
-    // Log if there's an end-file with error reason (useful for debugging stream failures)
-    if (strstr(buf, "\"event\":\"end-file\"") && strstr(buf, "\"reason\":\"error\"")) {
-        sb_log("[PLAYBACK] mpv_check_track_end: WARNING - track ended with ERROR");
-    }
-
-    return false;
+    return 0;
 }
 
 // ============================================================================
@@ -3212,8 +3231,10 @@ int main(int argc, char *argv[]) {
         // Only check if we've been playing for at least 3 seconds
         if (st.playing_index >= 0 && mpv_ipc_fd >= 0) {
             if (now - st.playback_started >= 3) {
-                if (mpv_check_track_end()) {
-                    // Auto-play next track
+                int track_status = mpv_check_track_end();
+                if (track_status == 1) {
+                    // Normal EOF
+                    st.consecutive_errors = 0;
                     play_next(&st);
                     if (st.playing_index >= 0) {
                         const char *title = NULL;
@@ -3232,12 +3253,84 @@ int main(int argc, char *argv[]) {
                         snprintf(status, sizeof(status), "Playback finished");
                     }
                     draw_ui(&st, status);
+                } else if (track_status == 2) {
+                    // Playback error (e.g. unavailable/restricted video)
+                    st.consecutive_errors++;
+                    const char *failed_title = NULL;
+                    if (st.playing_from_playlist && st.playing_playlist_idx >= 0) {
+                        Playlist *pl = &st.playlists[st.playing_playlist_idx];
+                        if (st.playing_index < pl->count) {
+                            failed_title = pl->items[st.playing_index].title;
+                        }
+                    } else if (st.playing_index < st.search_count) {
+                        failed_title = st.search_results[st.playing_index].title;
+                    }
+
+                    if (st.consecutive_errors >= MAX_CONSECUTIVE_ERRORS) {
+                        sb_log("[PLAYBACK] stopping after %d consecutive errors", st.consecutive_errors);
+                        st.playing_index = -1;
+                        st.consecutive_errors = 0;
+                        snprintf(status, sizeof(status), "Playback stopped: too many errors in a row");
+                    } else {
+                        sb_log("[PLAYBACK] error on \"%s\", skipping to next (%d/%d)",
+                               failed_title ? failed_title : "(unknown)",
+                               st.consecutive_errors, MAX_CONSECUTIVE_ERRORS);
+                        if (mpv_last_error[0]) {
+                            snprintf(status, sizeof(status), "Error: %s - skipping: %s",
+                                     mpv_last_error, failed_title ? failed_title : "(unknown)");
+                        } else {
+                            snprintf(status, sizeof(status), "Playback error - skipping: %s",
+                                     failed_title ? failed_title : "(unknown)");
+                        }
+                        play_next(&st);
+                        if (st.playing_index < 0) {
+                            snprintf(status, sizeof(status), "Playback stopped: no more tracks");
+                        }
+                    }
+                    draw_ui(&st, status);
                 }
             } else {
-                // During grace period, still drain the socket buffer
+                // During grace period, drain socket but still detect errors
+                // (yt-dlp resolution failures come back fast)
                 char drain_buf[4096];
-                while (read(mpv_ipc_fd, drain_buf, sizeof(drain_buf)) > 0) {
-                    // Discard data during grace period
+                ssize_t drain_n;
+                while ((drain_n = read(mpv_ipc_fd, drain_buf, sizeof(drain_buf) - 1)) > 0) {
+                    drain_buf[drain_n] = '\0';
+                    if (strstr(drain_buf, "\"event\":\"end-file\"") &&
+                        strstr(drain_buf, "\"reason\":\"error\"")) {
+                        extract_mpv_file_error(drain_buf);
+                        sb_log("[PLAYBACK] error during grace period: %s",
+                               mpv_last_error[0] ? mpv_last_error : "(unknown)");
+
+                        st.consecutive_errors++;
+                        const char *failed_title = NULL;
+                        if (st.playing_from_playlist && st.playing_playlist_idx >= 0) {
+                            Playlist *pl = &st.playlists[st.playing_playlist_idx];
+                            if (st.playing_index < pl->count)
+                                failed_title = pl->items[st.playing_index].title;
+                        } else if (st.playing_index < st.search_count) {
+                            failed_title = st.search_results[st.playing_index].title;
+                        }
+
+                        if (st.consecutive_errors >= MAX_CONSECUTIVE_ERRORS) {
+                            st.playing_index = -1;
+                            st.consecutive_errors = 0;
+                            snprintf(status, sizeof(status), "Playback stopped: too many errors in a row");
+                        } else {
+                            if (mpv_last_error[0]) {
+                                snprintf(status, sizeof(status), "Error: %s - skipping: %s",
+                                         mpv_last_error, failed_title ? failed_title : "(unknown)");
+                            } else {
+                                snprintf(status, sizeof(status), "Playback error - skipping: %s",
+                                         failed_title ? failed_title : "(unknown)");
+                            }
+                            play_next(&st);
+                            if (st.playing_index < 0)
+                                snprintf(status, sizeof(status), "Playback stopped: no more tracks");
+                        }
+                        draw_ui(&st, status);
+                        break;
+                    }
                 }
             }
         }
@@ -3494,6 +3587,7 @@ int main(int argc, char *argv[]) {
                     case '\n':
                     case KEY_ENTER:
                         if (st.search_count > 0) {
+                            st.consecutive_errors = 0;
                             play_search_result(&st, st.search_selected);
                             snprintf(status, sizeof(status), "Playing: %s",
                                      st.search_results[st.search_selected].title ?
@@ -3912,6 +4006,7 @@ int main(int argc, char *argv[]) {
                     case '\n':
                     case KEY_ENTER:
                         if (pl && pl->count > 0) {
+                            st.consecutive_errors = 0;
                             play_playlist_song(&st, st.current_playlist_idx, st.playlist_song_selected);
                             snprintf(status, sizeof(status), "Playing: %s",
                                      pl->items[st.playlist_song_selected].title ?
