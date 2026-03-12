@@ -39,7 +39,9 @@ int fetch_youtube_playlist(const char *url, Song *songs, int max_songs,
         }
     }
     free(title_line);
-    pclose(title_fp);
+    int title_exit = pclose(title_fp);
+    if (title_exit != 0 && strcmp(playlist_title, "YouTube Playlist") == 0)
+        return -1;
 
     // Report: Fetching songs
     if (progress_callback) {
@@ -103,15 +105,18 @@ int fetch_youtube_playlist(const char *url, Song *songs, int max_songs,
     }
 
     free(line);
-    pclose(fp);
-    
+    int exit_status = pclose(fp);
+
+    if (count == 0 && exit_status != 0)
+        return -1;
+
     // Report: Complete
     if (progress_callback && count > 0) {
         char msg[128];
         snprintf(msg, sizeof(msg), "Completed! Fetched %d songs", count);
         progress_callback(count, msg, callback_data);
     }
-    
+
     return count;
 }
 
