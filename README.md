@@ -307,6 +307,8 @@ All shortcuts are visible in the header when you run shellbeats. Here's the comp
 | `Left/Right` | Seek backward/forward |
 | `t` | Jump to time (mm:ss) |
 | `q` | Quit |
+| `-` | Volume down |
+| `=` | Volume up |
 
 ### Navigation
 
@@ -372,6 +374,9 @@ All shortcuts are visible in the header when you run shellbeats. Here's the comp
 - **Persistent Queue**: Resume interrupted downloads on restart
 - **Duplicate Prevention**: Won't download the same song twice
 - **Debug Logging**: Detailed playback logs with `-log` flag for troubleshooting
+- **Volume Support**: Allows for setting and saving volume between sessions
+
+> Volume support added by ***nhampton20***
 
 ## BUGS
 

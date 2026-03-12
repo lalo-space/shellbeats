@@ -126,13 +126,17 @@ typedef struct {
     int current_playlist_idx;
     int playlist_song_selected;
     int playlist_song_scroll;
-    
+
+    // EOF state
+    bool eof;
+
     // Playback state
     int playing_index;
     bool playing_from_playlist;
     int playing_playlist_idx;
     bool paused;
-    
+    float volume;
+
     // UI state
     ViewMode view;
     int add_to_playlist_selected;
@@ -834,9 +838,11 @@ static void save_config(AppState *st) {
     fprintf(f, "  \"max_results\": %d,\n", st->config.max_results);
     fprintf(f, "  \"remember_session\": %s,\n", st->config.remember_session ? "true" : "false");
     fprintf(f, "  \"shuffle_mode\": %s,\n", st->shuffle_mode ? "true" : "false");
+    
 
     // Session state (only saved if remember_session is enabled)
     if (st->config.remember_session) {
+        fprintf(f, "  \"volume\": %.2f,\n", st->volume);
         fprintf(f, "  \"last_query\": \"%s\",\n", escaped_query ? escaped_query : "");
         fprintf(f, "  \"last_playlist_idx\": %d,\n", st->last_playlist_idx);
         fprintf(f, "  \"last_song_idx\": %d,\n", st->last_song_idx);
@@ -892,6 +898,21 @@ static int json_get_int(const char *json, const char *key, int default_val) {
     return atoi(p);
 }
 
+static float json_get_float(const char *json, const char *key, int default_val) {
+    char pattern[256];
+    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
+
+    const char *p = strstr(json, pattern);
+    if (!p) return default_val;
+
+    p += strlen(pattern);
+    while (*p && (*p == ' ' || *p == ':' || *p == '\t')) p++;
+
+    if (!*p) return default_val;
+
+    return atof(p);
+}
+
 static bool json_get_bool(const char *json, const char *key, bool default_val) {
     return json_get_int(json, key, default_val ? 1 : 0) != 0;
 }
@@ -902,6 +923,7 @@ static void load_config(AppState *st) {
     st->config.seek_step = 10;
     st->config.remember_session = false;
     st->shuffle_mode = false;
+    st->volume = 50;
     st->last_query[0] = '\0';
     st->cached_search_count = 0;
     st->last_playlist_idx = -1;
@@ -954,6 +976,7 @@ static void load_config(AppState *st) {
 
     st->config.remember_session = json_get_bool(content, "remember_session", false);
     st->shuffle_mode = json_get_bool(content, "shuffle_mode", false);
+    st->volume = json_get_float(content, "volume", 50);
 
     // Parse session state
     char *last_query = json_get_string(content, "last_query");
@@ -1870,6 +1893,12 @@ static bool mpv_connect(void) {
         sb_log("[PLAYBACK] mpv_connect: failed to send observe command: %s", strerror(errno));
     }
     (void)w;
+    // Enable volume event observation
+    const char *volume_observe_cmd = "{\"command\": [\"observe_property\",2,\"volume\"]}\n";
+    ssize_t v = write(mpv_ipc_fd, volume_observe_cmd, strlen(volume_observe_cmd));
+    if (v < 0)
+        sb_log("[VOLUME] mpv_connect: failed to send observe command: %s", strerror(errno));
+    (void)v;
 
     return true;
 }
@@ -1910,6 +1939,24 @@ static void mpv_send_command(const char *cmd) {
     }
     w = write(mpv_ipc_fd, "\n", 1);
     (void)w;
+}
+
+static void mpv_volume_modify(int modifer) {
+    sb_log("[VOLUME] mpv_volume_modify called with modifier: %d", modifer);
+    char modifierString[4];
+    const char *commandPrefix = "{\"command\": [\"add\", \"volume\", \"";
+    sprintf(modifierString, "%d", modifer);
+    char *command = malloc(sizeof(char) * (strlen(commandPrefix)) + strlen(modifierString) + 1);
+    sprintf(command, "%s%d\"]}", commandPrefix, modifer);
+    mpv_send_command(command);
+    free(command);
+}
+
+static void mpv_volume_set(int volume) {
+    sb_log("[VOLUME] mpv_volume_set called with volume: %d", volume);
+    char command[64];
+    snprintf(command, sizeof(command), "{\"command\": [\"set_property\", \"volume\", %d]}", volume);
+    mpv_send_command(command);
 }
 
 static void mpv_toggle_pause(void) {
@@ -2018,6 +2065,8 @@ static void mpv_start_if_needed(AppState *st) {
             if (mpv_connect()) {
                 sb_log("[PLAYBACK] mpv_start_if_needed: successfully connected to mpv (pid=%d)", pid);
                 connected = true;
+                // Set default volume in mpv
+                mpv_volume_set(st->volume);
             } else {
                 sb_log("[PLAYBACK] mpv_start_if_needed: IPC socket exists but connect failed");
             }
@@ -2049,37 +2098,49 @@ static void mpv_quit(void) {
 
 // Check if mpv finished playing (returns true if track ended)
 // Only returns true for genuine end-of-file, not loading states
-static bool mpv_check_track_end(void) {
-    if (mpv_ipc_fd < 0) return false;
+static void mpv_check_events(AppState *st) {
+    if (mpv_ipc_fd < 0)
+        return;
 
-    char buf[4096];
-    ssize_t n = read(mpv_ipc_fd, buf, sizeof(buf) - 1);
-
-    if (n <= 0) {
+    char buf[100];
+    int dup_fd = dup(mpv_ipc_fd);
+    FILE *stream = fdopen(dup_fd, "r");
+    if (stream == NULL) {
+        // if (n <= 0) {
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
             // Connection lost
-            sb_log("[PLAYBACK] mpv_check_track_end: connection lost: %s (errno=%d)", strerror(errno), errno);
+            sb_log("[PLAYBACK] mpv_check_events: connection lost: %s (errno=%d)", strerror(errno), errno);
             mpv_disconnect();
+            fclose(stream);
+            return;
         }
-        return false;
+        fclose(stream);
+        return;
     }
 
-    buf[n] = '\0';
-    sb_log("[PLAYBACK] mpv_check_track_end: IPC data received (%zd bytes): %.200s", n, buf);
+    // Loop over events
+    st->eof = false;
+    while (fgets(buf, sizeof(buf) - 1, stream) != NULL) {
+        // Check for track end updates
+        if (strstr(buf, "\"event\":\"end-file\"") && strstr(buf, "\"reason\":\"eof\"")) {
+            sb_log("[PLAYBACK] mpv_check_events: track ended (EOF)");
+            st->eof = true;
+        }
 
-    // Only trigger on end-file event with reason "eof" (not "error" or "stop")
-    // Format: {"event":"end-file","reason":"eof",...}
-    if (strstr(buf, "\"event\":\"end-file\"") && strstr(buf, "\"reason\":\"eof\"")) {
-        sb_log("[PLAYBACK] mpv_check_track_end: track ended (EOF)");
-        return true;
+        // Log if there's an end-file with error reason (useful for debugging stream failures)
+        if (strstr(buf, "\"event\":\"end-file\"") && strstr(buf, "\"reason\":\"error\"")) {
+            sb_log("[PLAYBACK] mpv_check_events: WARNING - track ended with ERROR");
+        }
+        if (strstr(buf, "event\":\"property-change") && strstr(buf, "id\":2")) {
+            char log[50];
+            float volume = atof(strstr(buf, "data\":") + 6);
+            sprintf(log, "[VOLUME] mpv_check_events: volume is %f", volume);
+            sb_log(log);
+            st->volume = volume;
+        }
     }
-
-    // Log if there's an end-file with error reason (useful for debugging stream failures)
-    if (strstr(buf, "\"event\":\"end-file\"") && strstr(buf, "\"reason\":\"error\"")) {
-        sb_log("[PLAYBACK] mpv_check_track_end: WARNING - track ended with ERROR");
-    }
-
-    return false;
+    fclose(stream);
+    return;
 }
 
 // ============================================================================
@@ -2546,7 +2607,14 @@ static void draw_now_playing(AppState *st, int rows, int cols) {
         }
         printw("%s", npbuf);
         attroff(A_BOLD);
+
         
+        if (st->volume >= 0) {
+            printw(" Volume: ");
+            attron(A_BOLD);
+            printw("%.02f", st->volume);
+            attroff(A_BOLD);
+        }
         if (st->paused) {
             printw(" [PAUSED]");
         }
@@ -3354,6 +3422,8 @@ static void show_help(void) {
     mvprintw(y++, 6, "R           Toggle shuffle mode");
     mvprintw(y++, 6, "Left/Right  Seek backward/forward");
     mvprintw(y++, 6, "t           Jump to time (mm:ss)");
+    mvprintw(y++, 6, "-           Volume down");
+    mvprintw(y++, 6, "=           Volume up");
     y++;
 
     mvprintw(y++, 4, "NAVIGATION:");
@@ -4035,6 +4105,7 @@ int main(int argc, char *argv[]) {
     }
 
     AppState st = {0};
+    st.volume = 50;
     st.playing_index = -1;
     st.playing_playlist_idx = -1;
     st.current_playlist_idx = -1;
@@ -4196,7 +4267,8 @@ int main(int argc, char *argv[]) {
         // Only check if we've been playing for at least 3 seconds
         if (st.playing_index >= 0 && mpv_ipc_fd >= 0) {
             if (now - st.playback_started >= 3) {
-                if (mpv_check_track_end()) {
+                mpv_check_events(&st);
+                if (st.eof) {
                     // Auto-play next track
                     play_next(&st);
                     if (st.playing_index >= 0) {
@@ -4436,6 +4508,12 @@ int main(int argc, char *argv[]) {
                 clear();
                 break;
             
+            case '-':
+                mpv_volume_modify(-5);
+                break;
+            case '=':
+                mpv_volume_modify(5);
+                break;
             default:
                 break;
         }
