@@ -1,0 +1,491 @@
+# Hungarian translations for ShellBeats.
+# Copyright (C) 2025
+# This file is distributed under the same license as the shellbeats package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: shellbeats 0.6\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-01-01 00:00+0000\n"
+"PO-Revision-Date: 2025-01-01 00:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: Hungarian\n"
+"Language: hu\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "  /,s: search | Enter: play | Space: pause | n/p: next/prev | R: shuffle | t: jump"
+msgstr "  /,s: keresés | Enter: lejátszás | Space: szünet | n/p: köv./előző | R: keverés | t: ugrás"
+
+msgid "  Left/Right: seek | a: add | d: download | f: playlists | S: settings | q: quit"
+msgstr "  Bal/Jobb: tekerés | a: hozzáadás | d: letöltés | f: listák | S: beállítások | q: kilépés"
+
+msgid "  Enter: open | c: create | e: rename | p: add YouTube | x: delete | d: download all"
+msgstr "  Enter: megnyitás | c: létrehozás | e: átnevezés | p: YouTube hozzáadása | x: törlés | d: összes letöltése"
+
+msgid "  Esc: back | i: about | q: quit"
+msgstr "  Esc: vissza | i: névjegy | q: kilépés"
+
+msgid "  Enter: play | Space: pause | n/p: next/prev | R: shuffle | t: jump | Left/Right: seek"
+msgstr "  Enter: lejátszás | Space: szünet | n/p: köv./előző | R: keverés | t: ugrás | Bal/Jobb: tekerés"
+
+msgid "  a: add | d: download | r: remove | D: download all | u: sync YT | Esc: back | q: quit"
+msgstr "  a: hozzáadás | d: letöltés | r: eltávolítás | D: összes letöltése | u: YT szinkron | Esc: vissza | q: kilépés"
+
+msgid "  Enter: add to playlist | c: create new playlist"
+msgstr "  Enter: hozzáadás listához | c: új lista létrehozása"
+
+msgid "  Esc: cancel"
+msgstr "  Esc: mégse"
+
+msgid "  Up/Down: navigate | Enter: edit/toggle"
+msgstr "  Fel/Le: navigáció | Enter: szerkesztés/váltás"
+
+msgid "  Press any key to close"
+msgstr "  Nyomj egy billentyűt a bezáráshoz"
+
+msgid "Fetching updates..."
+msgstr "Frissítések keresése..."
+
+msgid " Now playing: "
+msgstr " Most szól: "
+
+msgid " [PAUSED]"
+msgstr " [SZÜNET]"
+
+msgid " [SHUFFLE]"
+msgstr " [KEVERÉS]"
+
+msgid "Query: "
+msgstr "Keresés: "
+
+msgid "(none)"
+msgstr "(nincs)"
+
+msgid "Results: %d"
+msgstr "Találatok: %d"
+
+msgid "(no title)"
+msgstr "(nincs cím)"
+
+msgid "[D]"
+msgstr "[L]"
+
+msgid "Playlists"
+msgstr "Lejátszási listák"
+
+msgid "Total: %d"
+msgstr "Összes: %d"
+
+msgid "No playlists yet. Press 'c' to create one."
+msgstr "Még nincsenek listák. Nyomd meg a 'c'-t egy újhoz."
+
+msgid "%d songs"
+msgstr "%d dal"
+
+msgid "Playlist: "
+msgstr "Lista: "
+
+msgid "Songs: %d"
+msgstr "Dalok: %d"
+
+msgid "Playlist is empty. Search for songs and press 'a' to add."
+msgstr "A lista üres. Keress dalokat és nyomd meg az 'a'-t."
+
+msgid "Add to playlist: "
+msgstr "Hozzáadás listához: "
+
+msgid "Settings"
+msgstr "Beállítások"
+
+msgid "Download Path:"
+msgstr "Letöltési mappa:"
+
+msgid "Seek Step (seconds): %d"
+msgstr "Tekerés lépése (mp): %d"
+
+msgid "Remember Session: %s"
+msgstr "Munkamenet megjegyzése: %s"
+
+msgid "Shuffle Mode: %s"
+msgstr "Keverés mód: %s"
+
+msgid "Up/Down: navigate | Enter: edit/toggle | Esc: back"
+msgstr "Fel/Le: navigáció | Enter: szerkesztés/váltás | Esc: vissza"
+
+msgid "Editing: Enter to save, Esc to cancel"
+msgstr "Szerkesztés: Enter a mentéshez, Esc a megsemmisítéshez"
+
+msgid "Language: %s"
+msgstr "Nyelv: %s"
+
+msgid "ON"
+msgstr "BE"
+
+msgid "OFF"
+msgstr "KI"
+
+msgid " Download Queue "
+msgstr " Letöltési sor "
+
+msgid "Downloads in progress: %d remaining"
+msgstr "Letöltések folyamatban: %d hátralévő"
+
+msgid "Downloads will resume on next startup."
+msgstr "A letöltések a következő indításkor folytatódnak."
+
+msgid "[q] Quit anyway    [Esc] Cancel"
+msgstr "[q] Kilépés   [Esc] Mégse"
+
+msgid "made by Lalo for Nami & Elia"
+msgstr "készítette Lalo, Naminak és Eliának"
+
+msgid "A terminal-based music player for YouTube"
+msgstr "Terminál alapú zenelejátszó a YouTube-hoz"
+
+msgid "Features:"
+msgstr "Funkciók:"
+
+msgid "* Search and stream music from YouTube"
+msgstr "* Keresés és streamelés a YouTube-ról"
+
+msgid "* Download songs as MP3"
+msgstr "* Dalok letöltése MP3-ként"
+
+msgid "* Create and manage playlists"
+msgstr "* Lejátszási listák kezelése"
+
+msgid "* Offline playback from local files"
+msgstr "* Offline lejátszás helyi fájlokból"
+
+msgid "Built with mpv, yt-dlp, and ncurses"
+msgstr "Készült mpv, yt-dlp és ncurses segítségével"
+
+msgid "ShellBeats v0.6 | Help"
+msgstr "ShellBeats v0.6 | Súgó"
+
+msgid "PLAYBACK:"
+msgstr "LEJÁTSZÁS:"
+
+msgid "/,s         Search YouTube"
+msgstr "/,s         Keresés a YouTube-on"
+
+msgid "Enter       Play selected"
+msgstr "Enter       Kiválasztott lejátszása"
+
+msgid "Space       Pause/Resume"
+msgstr "Space       Szünet/Folytatás"
+
+msgid "n/p         Next/Previous track"
+msgstr "n/p         Következő/Előző szám"
+
+msgid "x           Stop playback"
+msgstr "x           Lejátszás leállítása"
+
+msgid "R           Toggle shuffle mode"
+msgstr "R           Keverés be/ki"
+
+msgid "Left/Right  Seek backward/forward"
+msgstr "Bal/Jobb    Tekerés hátra/előre"
+
+msgid "t           Jump to time (mm:ss)"
+msgstr "t           Ugrás időpontra (pp:mm)"
+
+msgid "NAVIGATION:"
+msgstr "NAVIGÁCIÓ:"
+
+msgid "Up/Down/j/k Navigate list"
+msgstr "Fel/Le/j/k  Lista navigáció"
+
+msgid "PgUp/PgDn   Page up/down"
+msgstr "PgUp/PgDn   Lapozás fel/le"
+
+msgid "g/G         Go to start/end"
+msgstr "g/G         Ugrás az elejére/végére"
+
+msgid "Esc         Go back"
+msgstr "Esc         Vissza"
+
+msgid "PLAYLISTS:"
+msgstr "LEJÁTSZÁSI LISTÁK:"
+
+msgid "f           Open playlists menu"
+msgstr "f           Listák megnyitása"
+
+msgid "a           Add song to playlist"
+msgstr "a           Dal hozzáadása listához"
+
+msgid "c           Create new playlist"
+msgstr "c           Új lista létrehozása"
+
+msgid "e           Rename playlist"
+msgstr "e           Lista átnevezése"
+
+msgid "r           Remove song from playlist"
+msgstr "r           Dal eltávolítása"
+
+msgid "d/D         Download song / Download all"
+msgstr "d/D         Letöltés / Összes letöltése"
+
+msgid "p           Import YouTube playlist"
+msgstr "p           YouTube lista importálása"
+
+msgid "u           Sync YouTube playlist"
+msgstr "u           YouTube lista szinkronizálása"
+
+msgid "x           Delete playlist"
+msgstr "x           Lista törlése"
+
+msgid "OTHER:"
+msgstr "EGYÉB:"
+
+msgid "S           Settings"
+msgstr "S           Beállítások"
+
+msgid "i           About"
+msgstr "i           Névjegy"
+
+msgid "h,?         Show this help"
+msgstr "h,?         Súgó megjelenítése"
+
+msgid "q           Quit"
+msgstr "q           Kilépés"
+
+msgid " Press any key to continue... "
+msgstr " Nyomj egy billentyűt a folytatáshoz... "
+
+msgid "Jump to (mm:ss): "
+msgstr "Ugrás ide (pp:mm): "
+
+msgid "Search: "
+msgstr "Keresés: "
+
+msgid "New playlist name: "
+msgstr "Új lista neve: "
+
+msgid "Delete '%s'? (y/n): "
+msgstr "'%s' törlése? (i/n): "
+
+msgid "Rename '%s' to: "
+msgstr "'%s' átnevezése erre: "
+
+msgid "YouTube playlist URL: "
+msgstr "YouTube lista URL: "
+
+msgid "Playlist name: "
+msgstr "Lista neve: "
+
+msgid "Mode (s)tream or (d)ownload: "
+msgstr "Mód: (s)treamelés vagy (l)etöltés: "
+
+msgid "Seek step (1-300 seconds): "
+msgstr "Tekerés lépése (1-300 mp): "
+
+msgid "YouTube playlist URL to sync: "
+msgstr "YouTube lista URL a szinkronhoz: "
+
+msgid "Press / to search, d to download, f for playlists, h for help."
+msgstr "Nyomd meg a /-t a kereséshez, d letöltés, f listák, h súgó."
+
+msgid "Resuming: %s, track %d"
+msgstr "Folytatás: %s, %d. szám"
+
+msgid "Resuming: search '%s', track %d"
+msgstr "Folytatás: keresés '%s', %d. szám"
+
+msgid "Auto-playing: %s"
+msgstr "Következő: %s"
+
+msgid "Playback finished"
+msgstr "Lejátszás befejeződött"
+
+msgid "Edit cancelled"
+msgstr "Szerkesztés megszakítva"
+
+msgid "Download path saved"
+msgstr "Letöltési mappa mentve"
+
+msgid "Paused"
+msgstr "Szüneteltetve"
+
+msgid "Playing"
+msgstr "Lejátszás"
+
+msgid "Next track"
+msgstr "Következő szám"
+
+msgid "Previous track"
+msgstr "Előző szám"
+
+msgid "Shuffle: %s"
+msgstr "Keverés: %s"
+
+msgid "<< -%ds"
+msgstr "<< -%dmp"
+
+msgid ">> +%ds"
+msgstr ">> +%dmp"
+
+msgid "Jump to %d:%02d"
+msgstr "Ugrás: %d:%02d"
+
+msgid "Invalid time format"
+msgstr "Érvénytelen időformátum"
+
+msgid "Cancelled"
+msgstr "Megszakítva"
+
+msgid "Playing: %s"
+msgstr "Lejátszás: %s"
+
+msgid "Searching: %s ..."
+msgstr "Keresés: %s ..."
+
+msgid "Search error!"
+msgstr "Keresési hiba!"
+
+msgid "No results for: %s"
+msgstr "Nincs találat: %s"
+
+msgid "Found %d results for: %s"
+msgstr "%d találat erre: %s"
+
+msgid "Search cancelled"
+msgstr "Keresés megszakítva"
+
+msgid "Playback stopped"
+msgstr "Lejátszás leállítva"
+
+msgid "Select playlist"
+msgstr "Válassz listát"
+
+msgid "No song selected"
+msgstr "Nincs kiválasztott dal"
+
+msgid "Created playlist: %s"
+msgstr "Lista létrehozva: %s"
+
+msgid "Playlist already exists: %s"
+msgstr "A lista már létezik: %s"
+
+msgid "Failed to create playlist"
+msgstr "Nem sikerült létrehozni a listát"
+
+msgid "Editing download path..."
+msgstr "Letöltési mappa szerkesztése..."
+
+msgid "Queued: %s"
+msgstr "Sorba állítva: %s"
+
+msgid "Already downloaded or queued"
+msgstr "Már letöltve vagy sorban"
+
+msgid "Failed to queue download"
+msgstr "Nem sikerült sorba állítani"
+
+msgid "Opened: %s"
+msgstr "Megnyitva: %s"
+
+msgid "Deleted playlist"
+msgstr "Lista törölve"
+
+msgid "Failed to delete"
+msgstr "Nem sikerült törölni"
+
+msgid "Renamed to '%s'"
+msgstr "Átnevezve: '%s'"
+
+msgid "Failed to rename playlist"
+msgstr "Nem sikerült átnevezni"
+
+msgid "Playlist '%s' already exists"
+msgstr "A '%s' nevű lista már létezik"
+
+msgid "Invalid URL"
+msgstr "Érvénytelen URL"
+
+msgid "Validating URL..."
+msgstr "URL ellenőrzése..."
+
+msgid "Failed to fetch playlist"
+msgstr "Nem sikerült lekérni a listát"
+
+msgid "Invalid mode. Choose 's' or 'd'"
+msgstr "Érvénytelen mód. Válaszd az 's' vagy 'l' opciót"
+
+msgid "Queued %d songs (%d already downloaded)"
+msgstr "%d dal sorba állítva (%d már letöltve)"
+
+msgid "All %d songs already downloaded"
+msgstr "Mind a %d dal már le van töltve"
+
+msgid "Playlist is empty"
+msgstr "A lista üres"
+
+msgid "Removed: %s"
+msgstr "Eltávolítva: %s"
+
+msgid "Failed to remove"
+msgstr "Nem sikerült eltávolítani"
+
+msgid "Queued %d songs"
+msgstr "%d dal sorba állítva"
+
+msgid "All songs already queued or downloaded"
+msgstr "Minden dal már sorban vagy letöltve"
+
+msgid "Syncing playlist..."
+msgstr "Lista szinkronizálása..."
+
+msgid "Added %d new songs"
+msgstr "%d új dal hozzáadva"
+
+msgid "Playlist is up to date"
+msgstr "A lista naprakész"
+
+msgid "Sync cancelled"
+msgstr "Szinkron megszakítva"
+
+msgid "Not a YouTube playlist"
+msgstr "Nem YouTube lista"
+
+msgid "Invalid YouTube playlist URL"
+msgstr "Érvénytelen YouTube lista URL"
+
+msgid "Added to: %s"
+msgstr "Hozzáadva: %s"
+
+msgid "Already in playlist or failed"
+msgstr "Már a listában van vagy hiba történt"
+
+msgid "Created '%s' and added song"
+msgstr "'%s' létrehozva és dal hozzáadva"
+
+msgid "Seek step set to %d seconds"
+msgstr "Tekerés lépése: %d másodperc"
+
+msgid "Invalid value (must be 1-300)"
+msgstr "Érvénytelen érték (1-300)"
+
+msgid "Remember session: %s"
+msgstr "Munkamenet megjegyzése: %s"
+
+msgid "yt-dlp not found! Will be downloaded automatically on next start."
+msgstr "yt-dlp nem található! A következő indításkor automatikusan letöltődik."
+
+msgid "mpv not found! Install with: apt install mpv"
+msgstr "mpv nem található! Telepítsd: apt install mpv"
+
+msgid "Fetching playlist info..."
+msgstr "Lista információk lekérése..."
+
+msgid "Fetching songs..."
+msgstr "Dalok lekérése..."
+
+msgid "Fetched %d songs..."
+msgstr "%d dal lekérdezve..."
+
+msgid "Completed! Fetched %d songs"
+msgstr "Kész! %d dal lekérdezve"
+

@@ -1,0 +1,719 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-03-11 15:14+0100\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=CHARSET\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: shellbeats.c:2329
+msgid ""
+"  /,s: search | Enter: play | Space: pause | n/p: next/prev | R: shuffle | "
+"t: jump"
+msgstr ""
+
+#: shellbeats.c:2341
+msgid "  Enter: add to playlist | c: create new playlist"
+msgstr ""
+
+#: shellbeats.c:2333
+msgid ""
+"  Enter: open | c: create | e: rename | p: add YouTube | x: delete | d: "
+"download all"
+msgstr ""
+
+#: shellbeats.c:2337
+msgid ""
+"  Enter: play | Space: pause | n/p: next/prev | R: shuffle | t: jump | Left/"
+"Right: seek"
+msgstr ""
+
+#: shellbeats.c:2334 shellbeats.c:2346
+msgid "  Esc: back | i: about | q: quit"
+msgstr ""
+
+#: shellbeats.c:2342
+msgid "  Esc: cancel"
+msgstr ""
+
+#: shellbeats.c:2330
+msgid ""
+"  Left/Right: seek | a: add | d: download | f: playlists | S: settings | q: "
+"quit"
+msgstr ""
+
+#: shellbeats.c:2349
+msgid "  Press any key to close"
+msgstr ""
+
+#: shellbeats.c:2345
+msgid "  Up/Down: navigate | Enter: edit/toggle"
+msgstr ""
+
+#: shellbeats.c:2338
+msgid ""
+"  a: add | d: download | r: remove | D: download all | u: sync YT | Esc: "
+"back | q: quit"
+msgstr ""
+
+#: shellbeats.c:2859
+msgid " Download Queue "
+msgstr ""
+
+#: shellbeats.c:2434
+msgid " Now playing: "
+msgstr ""
+
+#: shellbeats.c:3074
+msgid " Press any key to continue... "
+msgstr ""
+
+#: shellbeats.c:2323
+msgid " ShellBeats v0.6 "
+msgstr ""
+
+#: shellbeats.c:2451
+msgid " [PAUSED]"
+msgstr ""
+
+#: shellbeats.c:2454
+msgid " [SHUFFLE]"
+msgstr ""
+
+#: shellbeats.c:2603
+msgid " [YT]"
+msgstr ""
+
+#: shellbeats.c:2585 shellbeats.c:2739
+#, c-format
+msgid "%d songs"
+msgstr ""
+
+#: shellbeats.c:2519 shellbeats.c:2664
+msgid "(no title)"
+msgstr ""
+
+#: shellbeats.c:2465
+msgid "(none)"
+msgstr ""
+
+#: shellbeats.c:2916
+msgid "* Create and manage playlists"
+msgstr ""
+
+#: shellbeats.c:2915
+msgid "* Download songs as MP3"
+msgstr ""
+
+#: shellbeats.c:2917
+msgid "* Offline playback from local files"
+msgstr ""
+
+#: shellbeats.c:2914
+msgid "* Search and stream music from YouTube"
+msgstr ""
+
+#: shellbeats.c:2306
+msgid "--:--"
+msgstr ""
+
+#: shellbeats.c:3038
+msgid "/,s         Search YouTube"
+msgstr ""
+
+#: shellbeats.c:3438
+#, c-format
+msgid "<< -%ds"
+msgstr ""
+
+#: shellbeats.c:3446
+#, c-format
+msgid ">> +%ds"
+msgstr ""
+
+#: shellbeats.c:2910
+msgid "A terminal-based music player for YouTube"
+msgstr ""
+
+#: shellbeats.c:2687
+msgid "Add to playlist: "
+msgstr ""
+
+#: shellbeats.c:4078
+#, c-format
+msgid "Added %d new songs"
+msgstr ""
+
+#: shellbeats.c:4126
+#, c-format
+msgid "Added to: %s"
+msgstr ""
+
+#: shellbeats.c:3919
+#, c-format
+msgid "All %d songs already downloaded"
+msgstr ""
+
+#: shellbeats.c:4015
+msgid "All songs already queued or downloaded"
+msgstr ""
+
+#: shellbeats.c:3640 shellbeats.c:3979
+msgid "Already downloaded or queued"
+msgstr ""
+
+#: shellbeats.c:4129
+msgid "Already in playlist or failed"
+msgstr ""
+
+#: shellbeats.c:3278
+#, c-format
+msgid "Auto-playing: %s"
+msgstr ""
+
+#: shellbeats.c:2921
+msgid "Built with mpv, yt-dlp, and ncurses"
+msgstr ""
+
+#: shellbeats.c:3487 shellbeats.c:3619 shellbeats.c:3703 shellbeats.c:3725
+#: shellbeats.c:3814 shellbeats.c:3884 shellbeats.c:4156
+msgid "Cancelled"
+msgstr ""
+
+#: youtube_playlist.c:114
+#, c-format
+msgid "Completed! Fetched %d songs"
+msgstr ""
+
+#: shellbeats.c:4144
+#, c-format
+msgid "Created '%s' and added song"
+msgstr ""
+
+#: shellbeats.c:3612 shellbeats.c:3695 shellbeats.c:4148
+#, c-format
+msgid "Created playlist: %s"
+msgstr ""
+
+#: shellbeats.c:3712
+#, c-format
+msgid "Delete '%s'? (y/n): "
+msgstr ""
+
+#: shellbeats.c:3717
+msgid "Deleted playlist"
+msgstr ""
+
+#: shellbeats.c:2763
+msgid "Download Path:"
+msgstr ""
+
+#: shellbeats.c:3325
+msgid "Download path saved"
+msgstr ""
+
+#. Draw content
+#: shellbeats.c:2863
+#, c-format
+msgid "Downloads in progress: %d remaining"
+msgstr ""
+
+#: shellbeats.c:2864
+msgid "Downloads will resume on next startup."
+msgstr ""
+
+#: shellbeats.c:3314
+msgid "Edit cancelled"
+msgstr ""
+
+#: shellbeats.c:4186
+msgid "Editing download path..."
+msgstr ""
+
+#: shellbeats.c:2836
+msgid "Editing: Enter to save, Esc to cancel"
+msgstr ""
+
+#: shellbeats.c:3039
+msgid "Enter       Play selected"
+msgstr ""
+
+#: shellbeats.c:3052
+msgid "Esc         Go back"
+msgstr ""
+
+#: shellbeats.c:3616 shellbeats.c:3700 shellbeats.c:3861 shellbeats.c:4153
+msgid "Failed to create playlist"
+msgstr ""
+
+#: shellbeats.c:3722
+msgid "Failed to delete"
+msgstr ""
+
+#: shellbeats.c:3839 shellbeats.c:4083
+msgid "Failed to fetch playlist"
+msgstr ""
+
+#: shellbeats.c:3642 shellbeats.c:3981
+msgid "Failed to queue download"
+msgstr ""
+
+#: shellbeats.c:3999
+msgid "Failed to remove"
+msgstr ""
+
+#: shellbeats.c:3810
+msgid "Failed to rename playlist"
+msgstr ""
+
+#. Features
+#: shellbeats.c:2913
+msgid "Features:"
+msgstr ""
+
+#: youtube_playlist.c:98
+#, c-format
+msgid "Fetched %d songs..."
+msgstr ""
+
+#: youtube_playlist.c:20
+msgid "Fetching playlist info..."
+msgstr ""
+
+#: youtube_playlist.c:49
+msgid "Fetching songs..."
+msgstr ""
+
+#: shellbeats.c:2371
+msgid "Fetching updates..."
+msgstr ""
+
+#: shellbeats.c:3567
+#, c-format
+msgid "Found %d results for: %s"
+msgstr ""
+
+#: shellbeats.c:3825
+msgid "Invalid URL"
+msgstr ""
+
+#: shellbeats.c:4086
+msgid "Invalid YouTube playlist URL"
+msgstr ""
+
+#: shellbeats.c:3854
+msgid "Invalid mode. Choose 's' or 'd'"
+msgstr ""
+
+#: shellbeats.c:3462
+msgid "Invalid time format"
+msgstr ""
+
+#: shellbeats.c:4198
+msgid "Invalid value (must be 1-300)"
+msgstr ""
+
+#: shellbeats.c:3460
+#, c-format
+msgid "Jump to %d:%02d"
+msgstr ""
+
+#: shellbeats.c:3453
+msgid "Jump to (mm:ss): "
+msgstr ""
+
+#: shellbeats.c:2827 shellbeats.c:4219
+#, c-format
+msgid "Language: %s"
+msgstr ""
+
+#: shellbeats.c:3044
+msgid "Left/Right  Seek backward/forward"
+msgstr ""
+
+#: shellbeats.c:3852
+msgid "Mode (s)tream or (d)ownload: "
+msgstr ""
+
+#: shellbeats.c:3048
+msgid "NAVIGATION:"
+msgstr ""
+
+#: shellbeats.c:3608 shellbeats.c:3691 shellbeats.c:4138
+msgid "New playlist name: "
+msgstr ""
+
+#: shellbeats.c:3413
+msgid "Next track"
+msgstr ""
+
+#: shellbeats.c:2556 shellbeats.c:2715
+msgid "No playlists yet. Press 'c' to create one."
+msgstr ""
+
+#: shellbeats.c:3565
+#, c-format
+msgid "No results for: %s"
+msgstr ""
+
+#: shellbeats.c:3602 shellbeats.c:3645 shellbeats.c:3984
+msgid "No song selected"
+msgstr ""
+
+#: shellbeats.c:4091
+msgid "Not a YouTube playlist"
+msgstr ""
+
+#: shellbeats.c:2813 shellbeats.c:2820 shellbeats.c:3431 shellbeats.c:4206
+#: shellbeats.c:4211
+msgid "OFF"
+msgstr ""
+
+#: shellbeats.c:2813 shellbeats.c:2820 shellbeats.c:3431 shellbeats.c:4206
+#: shellbeats.c:4211
+msgid "ON"
+msgstr ""
+
+#: shellbeats.c:3067
+msgid "OTHER:"
+msgstr ""
+
+#: shellbeats.c:3684
+#, c-format
+msgid "Opened: %s"
+msgstr ""
+
+#: shellbeats.c:3037
+msgid "PLAYBACK:"
+msgstr ""
+
+#: shellbeats.c:3055
+msgid "PLAYLISTS:"
+msgstr ""
+
+#: shellbeats.c:3406
+msgid "Paused"
+msgstr ""
+
+#: shellbeats.c:3050
+msgid "PgUp/PgDn   Page up/down"
+msgstr ""
+
+#: shellbeats.c:3281
+msgid "Playback finished"
+msgstr ""
+
+#: shellbeats.c:3582 shellbeats.c:4102
+msgid "Playback stopped"
+msgstr ""
+
+#: shellbeats.c:3406
+msgid "Playing"
+msgstr ""
+
+#: shellbeats.c:3547 shellbeats.c:3965
+#, c-format
+msgid "Playing: %s"
+msgstr ""
+
+#: shellbeats.c:3748
+#, c-format
+msgid "Playlist '%s' already exists"
+msgstr ""
+
+#: shellbeats.c:3614 shellbeats.c:3698 shellbeats.c:4151
+#, c-format
+msgid "Playlist already exists: %s"
+msgstr ""
+
+#: shellbeats.c:3921
+msgid "Playlist is empty"
+msgstr ""
+
+#: shellbeats.c:2619
+msgid "Playlist is empty. Search for songs and press 'a' to add."
+msgstr ""
+
+#: shellbeats.c:4080
+msgid "Playlist is up to date"
+msgstr ""
+
+#: shellbeats.c:3844
+msgid "Playlist name: "
+msgstr ""
+
+#: shellbeats.c:2600
+msgid "Playlist: "
+msgstr ""
+
+#: shellbeats.c:2542 shellbeats.c:3591
+msgid "Playlists"
+msgstr ""
+
+#: shellbeats.c:3243 shellbeats.c:3246
+msgid "Press / to search, d to download, f for playlists, h for help."
+msgstr ""
+
+#: shellbeats.c:3420
+msgid "Previous track"
+msgstr ""
+
+#: shellbeats.c:2463
+msgid "Query: "
+msgstr ""
+
+#: shellbeats.c:4013
+#, c-format
+msgid "Queued %d songs"
+msgstr ""
+
+#: shellbeats.c:3916
+#, c-format
+msgid "Queued %d songs (%d already downloaded)"
+msgstr ""
+
+#: shellbeats.c:3638 shellbeats.c:3977
+#, c-format
+msgid "Queued: %s"
+msgstr ""
+
+#: shellbeats.c:3043
+msgid "R           Toggle shuffle mode"
+msgstr ""
+
+#: shellbeats.c:2813
+#, c-format
+msgid "Remember Session: %s"
+msgstr ""
+
+#: shellbeats.c:4205
+#, c-format
+msgid "Remember session: %s"
+msgstr ""
+
+#: shellbeats.c:3994
+#, c-format
+msgid "Removed: %s"
+msgstr ""
+
+#: shellbeats.c:3735
+#, c-format
+msgid "Rename '%s' to: "
+msgstr ""
+
+#: shellbeats.c:3808
+#, c-format
+msgid "Renamed to '%s'"
+msgstr ""
+
+#: shellbeats.c:2468
+#, c-format
+msgid "Results: %d"
+msgstr ""
+
+#: shellbeats.c:3222
+#, c-format
+msgid "Resuming: %s, track %d"
+msgstr ""
+
+#: shellbeats.c:3240
+#, c-format
+msgid "Resuming: search '%s', track %d"
+msgstr ""
+
+#: shellbeats.c:3068
+msgid "S           Settings"
+msgstr ""
+
+#: shellbeats.c:3570
+msgid "Search cancelled"
+msgstr ""
+
+#: shellbeats.c:3563
+msgid "Search error!"
+msgstr ""
+
+#: shellbeats.c:3556
+msgid "Search: "
+msgstr ""
+
+#: shellbeats.c:3558
+#, c-format
+msgid "Searching: %s ..."
+msgstr ""
+
+#: shellbeats.c:2806
+#, c-format
+msgid "Seek Step (seconds): %d"
+msgstr ""
+
+#: shellbeats.c:4190
+msgid "Seek step (1-300 seconds): "
+msgstr ""
+
+#: shellbeats.c:4196
+#, c-format
+msgid "Seek step set to %d seconds"
+msgstr ""
+
+#: shellbeats.c:3600
+msgid "Select playlist"
+msgstr ""
+
+#. Suppress unused parameter warning
+#: shellbeats.c:2750 shellbeats.c:3629
+msgid "Settings"
+msgstr ""
+
+#: shellbeats.c:3033
+msgid "ShellBeats v0.6 | Help"
+msgstr ""
+
+#: shellbeats.c:2820
+#, c-format
+msgid "Shuffle Mode: %s"
+msgstr ""
+
+#: shellbeats.c:3431 shellbeats.c:4210
+#, c-format
+msgid "Shuffle: %s"
+msgstr ""
+
+#: shellbeats.c:2606
+#, c-format
+msgid "Songs: %d"
+msgstr ""
+
+#: shellbeats.c:3040
+msgid "Space       Pause/Resume"
+msgstr ""
+
+#: shellbeats.c:4088
+msgid "Sync cancelled"
+msgstr ""
+
+#: shellbeats.c:4022
+msgid "Syncing playlist..."
+msgstr ""
+
+#: shellbeats.c:2543
+#, c-format
+msgid "Total: %d"
+msgstr ""
+
+#: shellbeats.c:3049
+msgid "Up/Down/j/k Navigate list"
+msgstr ""
+
+#. Help text
+#: shellbeats.c:2832
+msgid "Up/Down: navigate | Enter: edit/toggle | Esc: back"
+msgstr ""
+
+#: shellbeats.c:3829
+msgid "Validating URL..."
+msgstr ""
+
+#: shellbeats.c:4028
+msgid "YouTube playlist URL to sync: "
+msgstr ""
+
+#: shellbeats.c:3822
+msgid "YouTube playlist URL: "
+msgstr ""
+
+#: shellbeats.c:2513 shellbeats.c:2658
+msgid "[D]"
+msgstr ""
+
+#: shellbeats.c:2868
+msgid "[q] Quit anyway    [Esc] Cancel"
+msgstr ""
+
+#: shellbeats.c:3057
+msgid "a           Add song to playlist"
+msgstr ""
+
+#: shellbeats.c:3058
+msgid "c           Create new playlist"
+msgstr ""
+
+#: shellbeats.c:3061
+msgid "d/D         Download song / Download all"
+msgstr ""
+
+#: shellbeats.c:3059
+msgid "e           Rename playlist"
+msgstr ""
+
+#: shellbeats.c:3056
+msgid "f           Open playlists menu"
+msgstr ""
+
+#: shellbeats.c:3051
+msgid "g/G         Go to start/end"
+msgstr ""
+
+#: shellbeats.c:3070
+msgid "h,?         Show this help"
+msgstr ""
+
+#: shellbeats.c:3069
+msgid "i           About"
+msgstr ""
+
+#. Version and description
+#: shellbeats.c:2909
+msgid "made by Lalo for Nami & Elia"
+msgstr ""
+
+#: shellbeats.c:3107
+msgid "mpv not found! Install with: apt install mpv"
+msgstr ""
+
+#: shellbeats.c:3041
+msgid "n/p         Next/Previous track"
+msgstr ""
+
+#: shellbeats.c:3062
+msgid "p           Import YouTube playlist"
+msgstr ""
+
+#: shellbeats.c:3071
+msgid "q           Quit"
+msgstr ""
+
+#: shellbeats.c:3060
+msgid "r           Remove song from playlist"
+msgstr ""
+
+#: shellbeats.c:3045
+msgid "t           Jump to time (mm:ss)"
+msgstr ""
+
+#: shellbeats.c:3063
+msgid "u           Sync YouTube playlist"
+msgstr ""
+
+#: shellbeats.c:3064
+msgid "x           Delete playlist"
+msgstr ""
+
+#: shellbeats.c:3042
+msgid "x           Stop playback"
+msgstr ""
+
+#: shellbeats.c:3097
+msgid "yt-dlp not found! Will be downloaded automatically on next start."
+msgstr ""
