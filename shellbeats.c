@@ -2098,13 +2098,19 @@ static int run_search(AppState *st, const char *raw_query) {
     }
     
     free(line);
-    pclose(fp);
-    
+    int exit_status = pclose(fp);
+
     st->search_count = count;
     st->search_selected = 0;
     st->search_scroll = 0;
     strncpy(st->query, query, sizeof(st->query) - 1);
     st->query[sizeof(st->query) - 1] = '\0';
+
+    if (count == 0 && exit_status != 0) {
+        sb_log("[PLAYBACK] run_search: yt-dlp failed with exit status %d for query=\"%s\"",
+               WEXITSTATUS(exit_status), query);
+        return -1;
+    }
 
     sb_log("[PLAYBACK] run_search: found %d results for query=\"%s\"", count, query);
 
