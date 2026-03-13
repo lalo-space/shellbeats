@@ -96,7 +96,7 @@ The download feature runs in a separate pthread to keep the UI responsive:
 
 - Press `d` on any song to add it to the download queue
 - Songs added to playlists are automatically queued for download
-- Download happens in background — you can keep browsing and playing music
+- Download happens in background you can keep browsing and playing music
 - Queue persists to disk (`~/.shellbeats/download_queue.json`)
 - If you quit with active downloads they'll resume next time you start shellbeats
 - Files are organized by playlist: `~/Music/shellbeats/PlaylistName/Song_[videoid].mp3`
@@ -225,12 +225,12 @@ You can import entire YouTube playlists into shellbeats, either for streaming or
 
 ### What you can do
 
-- **Sync between computers**: keep the same playlists on your desktop, laptop, and any other machine — push from one, pull from another
+- **Sync between computers**: keep the same playlists on your desktop, laptop, and any other machine push from one, pull from another
 - **Share playlists with the community**: your playlists can be discovered by other Surikata users
 - **Import playlists from others**: browse and import (add-only) playlists shared by the community directly into shellbeats
 - **Follow playlists**: follow other users' playlists and receive updates when they add new songs
 
-Sync is additive-only — importing or pulling never removes your existing songs.
+Sync is additive-only importing or pulling never removes your existing songs.
 
 ### SuriSync controls
 
@@ -255,7 +255,7 @@ shellbeats manages its own local copy of yt-dlp independently from the system on
 2. Compares it with the local version stored in `~/.shellbeats/yt-dlp.version`
 3. If outdated (or missing), downloads the new binary to `~/.shellbeats/bin/yt-dlp` and marks it executable
 
-When running commands (search, download, streaming), shellbeats uses the local binary if available, otherwise falls back to the system `yt-dlp`. This means the system-installed `yt-dlp` package is only needed as a safety net — shellbeats will keep itself up to date automatically as long as `curl` or `wget` is present.
+When running commands (search, download, streaming), shellbeats uses the local binary if available, otherwise falls back to the system `yt-dlp`. This means the system-installed `yt-dlp` package is only needed as a safety net, shellbeats will keep itself up to date automatically as long as `curl` or `wget` is present.
 
 ## Setup
 
@@ -379,7 +379,7 @@ If you created a playlist in one of previous sessions, then when you save a trac
 
 ## TODO
 
-Add support for unicode characters (had some problems, was in 0.6 wishlist — sorry).
+Add support for unicode characters (had some problems, was in 0.6 wishlist sorry).
 
 Start buffering the next song in a separate process, then pause it so it's ready to resume immediately when the current track ends, reducing delay in music streaming.
 
