@@ -5,7 +5,7 @@ https://shellbeats.com
 
 👉 [Playing YouTube from the Command Line – HackaDay](https://hackaday.com/2026/01/31/playing-youtube-from-the-command-line/)
 
-👉 [Surikata.app – Guild](https://surikata.app/g/9fa4af84829f)
+<img src="https://surikata.app/favicon.ico" width="20" height="20"> [Surikata.app –  Guild](https://surikata.app/g/9fa4af84829f)
 
 ## Updates
 
