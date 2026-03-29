@@ -271,6 +271,10 @@ sudo apt install mpv libncurses-dev libcurl4-openssl-dev libcjson-dev yt-dlp cur
 ```bash
 sudo pacman -S mpv ncurses curl cjson yt-dlp
 ```
+### Fedora/RHEL/CentOS
+```bash
+sudo dnf install mpv ncurses-devel libcurl-devel cJSON-devel yt-dlp curl
+```
 ### macOS (via [Homebrew](https://brew.sh/))
 ```bash
 brew install mpv yt-dlp cjson curl
