@@ -1,7 +1,7 @@
 # ShellBeats Makefile
 CC = gcc
 CFLAGS = -Wall -Wextra -O2 -pthread
-LDFLAGS = -lncurses -lcurl -lcjson -pthread
+LDFLAGS = -lncursesw -lcurl -lcjson -pthread
 
 # macOS: Homebrew paths
 UNAME_S := $(shell uname -s)

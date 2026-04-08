@@ -24,6 +24,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <dirent.h>
+#include <limits.h>
 #include "youtube_playlist.h"
 #include "surikata_sync.h"
 
@@ -5111,13 +5112,24 @@ int main(int argc, char *argv[]) {
                         }
                         break;
                     
+                    // Add current song to another playlist
+                    case 'a':
+                        if (pl && pl->count > 0 && st.playlist_song_selected < pl->count) {
+                            st.song_to_add = &pl->items[st.playlist_song_selected];
+                            st.add_to_playlist_selected = 0;
+                            st.view = VIEW_ADD_TO_PLAYLIST;
+                        }
+                        break;
+
                     // Remove song with 'X'
                     case 'X':
                         if (pl && pl->count > 0) {
+                            char title_buf[256];
                             const char *title = pl->items[st.playlist_song_selected].title;
+                            snprintf(title_buf, sizeof(title_buf), "%s", title ? title : "?");
                             if (remove_song_from_playlist(&st, st.current_playlist_idx,
                                                          st.playlist_song_selected)) {
-                                snprintf(status, sizeof(status), "Removed: %s", title ? title : "?");
+                                snprintf(status, sizeof(status), "Removed: %s", title_buf);
                                 if (st.playlist_song_selected >= pl->count && pl->count > 0) {
                                     st.playlist_song_selected = pl->count - 1;
                                 }
@@ -5276,7 +5288,8 @@ int main(int argc, char *argv[]) {
                     case KEY_ENTER:
                         if (st.playlist_count > 0 && st.song_to_add) {
                             if (add_song_to_playlist(&st, st.add_to_playlist_selected, st.song_to_add)) {
-                                snprintf(status, sizeof(status), "Added to: %s",
+                                snprintf(status, sizeof(status), "Added: %s to: %s",
+                                         st.song_to_add->title ? st.song_to_add->title : "?",
                                          st.playlists[st.add_to_playlist_selected].name);
                             } else {
                                 snprintf(status, sizeof(status), "Already in playlist or failed");
