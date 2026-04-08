@@ -55,6 +55,7 @@ typedef struct {
     Song items[MAX_PLAYLIST_ITEMS];
     int count;
     bool is_youtube_playlist;
+    char* youtube_playlist_url;  // only set if is_youtube_playlist is true
     bool is_shared;             // Synced to Surikata as public
 } Playlist;
 
@@ -107,6 +108,12 @@ typedef enum {
     VIEW_ABOUT,
     VIEW_SURISYNC
 } ViewMode;
+
+typedef enum {
+    REPEAT_OFF = 0,
+    REPEAT_ALL = 1,
+    REPEAT_ONE = 2
+} RepeatMode;
 
 typedef struct {
     // Search results
@@ -186,6 +193,7 @@ typedef struct {
 
     // Shuffle mode
     bool shuffle_mode;
+    RepeatMode repeat_mode;
 
     // Seek step in seconds (configurable)
     int seek_step;
@@ -799,6 +807,24 @@ static void stop_ytdlp_update(AppState *st) {
     st->ytdlp_update_thread_running = false;
 }
 
+static const char *repeat_mode_label(RepeatMode mode) {
+    switch (mode) {
+        case REPEAT_ALL: return "ALL";
+        case REPEAT_ONE: return "ONE";
+        case REPEAT_OFF:
+        default: return "OFF";
+    }
+}
+
+static RepeatMode next_repeat_mode(RepeatMode mode) {
+    switch (mode) {
+        case REPEAT_OFF: return REPEAT_ALL;
+        case REPEAT_ALL: return REPEAT_ONE;
+        case REPEAT_ONE:
+        default: return REPEAT_OFF;
+    }
+}
+
 // ============================================================================
 // NEW: Configuration Persistence
 // ============================================================================
@@ -834,6 +860,7 @@ static void save_config(AppState *st) {
     fprintf(f, "  \"max_results\": %d,\n", st->config.max_results);
     fprintf(f, "  \"remember_session\": %s,\n", st->config.remember_session ? "true" : "false");
     fprintf(f, "  \"shuffle_mode\": %s,\n", st->shuffle_mode ? "true" : "false");
+    fprintf(f, "  \"repeat_mode\": %d,\n", (int)st->repeat_mode);
 
     // Session state (only saved if remember_session is enabled)
     if (st->config.remember_session) {
@@ -902,6 +929,7 @@ static void load_config(AppState *st) {
     st->config.seek_step = 10;
     st->config.remember_session = false;
     st->shuffle_mode = false;
+    st->repeat_mode = REPEAT_OFF;
     st->last_query[0] = '\0';
     st->cached_search_count = 0;
     st->last_playlist_idx = -1;
@@ -954,6 +982,9 @@ static void load_config(AppState *st) {
 
     st->config.remember_session = json_get_bool(content, "remember_session", false);
     st->shuffle_mode = json_get_bool(content, "shuffle_mode", false);
+    int repeat_val = json_get_int(content, "repeat_mode", REPEAT_OFF);
+    if (repeat_val < REPEAT_OFF || repeat_val > REPEAT_ONE) repeat_val = REPEAT_OFF;
+    st->repeat_mode = (RepeatMode)repeat_val;
 
     // Parse session state
     char *last_query = json_get_string(content, "last_query");
@@ -1361,6 +1392,10 @@ static void free_playlist(Playlist *pl) {
     free(pl->filename);
     pl->name = NULL;
     pl->filename = NULL;
+    if (pl->youtube_playlist_url) {
+        free(pl->youtube_playlist_url);
+        pl->youtube_playlist_url = NULL;
+    }
     free_playlist_items(pl);
 }
 
@@ -1438,10 +1473,15 @@ static void save_playlist(AppState *st, int idx) {
     
     FILE *f = fopen(path, "w");
     if (!f) return;
-    
-    fprintf(f, "{\n  \"name\": \"%s\",\n  \"type\": \"%s\",\n  \"is_shared\": %s,\n  \"songs\": [\n",
+
+    char *escaped_src = json_escape_string(pl->youtube_playlist_url);
+
+    fprintf(f, "{\n  \"name\": \"%s\",\n  \"type\": \"%s\",\n  \"is_shared\": %s,\n  \"playlist_url\": \"%s\",\n  \"songs\": [\n",
             pl->name, pl->is_youtube_playlist ? "youtube" : "local",
-            pl->is_shared ? "true" : "false");
+            pl->is_shared ? "true" : "false",
+            escaped_src ? escaped_src : "");
+
+    free(escaped_src);
     
     for (int i = 0; i < pl->count; i++) {
         char *escaped_title = json_escape_string(pl->items[i].title);
@@ -1497,6 +1537,14 @@ static void load_playlist_songs(AppState *st, int idx) {
     char *type = json_get_string(content, "type");
     pl->is_youtube_playlist = (type && strcmp(type, "youtube") == 0);
     free(type);
+
+    char *src = json_get_string(content, "playlist_url");
+    if (src && src[0] && pl->is_youtube_playlist) {
+        pl->youtube_playlist_url = src; // take ownership
+    } else {
+        free(src);
+        pl->youtube_playlist_url = NULL;
+    }
 
     // Parse is_shared flag
     char *shared_str = json_get_string(content, "is_shared");
@@ -1680,6 +1728,7 @@ static int create_playlist(AppState *st, const char *name, bool is_youtube) {
     st->playlists[idx].filename = filename;
     st->playlists[idx].count = 0;
     st->playlists[idx].is_youtube_playlist = is_youtube;
+    st->playlists[idx].youtube_playlist_url = NULL;
     st->playlist_count++;
     
     save_playlists_index(st);
@@ -2298,6 +2347,23 @@ static int get_random_index(int count, int current) {
 static void play_next(AppState *st) {
     sb_log("[PLAYBACK] play_next: current index=%d, from_playlist=%d, playlist_idx=%d, shuffle=%d",
            st->playing_index, st->playing_from_playlist, st->playing_playlist_idx, st->shuffle_mode);
+    RepeatMode effective_repeat = st->repeat_mode;
+    if (!st->playing_from_playlist && effective_repeat == REPEAT_ALL) {
+        effective_repeat = REPEAT_OFF;
+    }
+
+    if (effective_repeat == REPEAT_ONE && st->playing_index >= 0) {
+        sb_log("[PLAYBACK] play_next: repeat-one mode, replaying current track");
+        if (st->playing_from_playlist && st->playing_playlist_idx >= 0) {
+            play_playlist_song(st, st->playing_playlist_idx, st->playing_index);
+            st->playlist_song_selected = st->playing_index;
+        } else {
+            play_search_result(st, st->playing_index);
+            st->search_selected = st->playing_index;
+        }
+        return;
+    }
+
     if (st->playing_from_playlist && st->playing_playlist_idx >= 0) {
         Playlist *pl = &st->playlists[st->playing_playlist_idx];
         int next;
@@ -2311,6 +2377,10 @@ static void play_next(AppState *st) {
             sb_log("[PLAYBACK] play_next: advancing to playlist song #%d/%d", next, pl->count);
             play_playlist_song(st, st->playing_playlist_idx, next);
             st->playlist_song_selected = next;
+        } else if (effective_repeat == REPEAT_ALL && pl->count > 0) {
+            sb_log("[PLAYBACK] play_next: repeat-all mode, wrapping playlist to start");
+            play_playlist_song(st, st->playing_playlist_idx, 0);
+            st->playlist_song_selected = 0;
         } else if (st->shuffle_mode) {
             // In shuffle mode, loop back
             next = get_random_index(pl->count, st->playing_index);
@@ -2319,6 +2389,10 @@ static void play_next(AppState *st) {
             st->playlist_song_selected = next;
         } else {
             sb_log("[PLAYBACK] play_next: already at last song in playlist (%d/%d)", st->playing_index, pl->count);
+            st->playing_index = -1;
+            st->playing_from_playlist = false;
+            st->playing_playlist_idx = -1;
+            st->paused = false;
         }
     } else if (st->search_count > 0) {
         int next;
@@ -2340,6 +2414,10 @@ static void play_next(AppState *st) {
             st->search_selected = next;
         } else {
             sb_log("[PLAYBACK] play_next: already at last search result (%d/%d)", st->playing_index, st->search_count);
+            st->playing_index = -1;
+            st->playing_from_playlist = false;
+            st->playing_playlist_idx = -1;
+            st->paused = false;
         }
     }
 }
@@ -2422,7 +2500,7 @@ static void draw_header(AppState *st, int cols, ViewMode view) {
     // Line 2-3: Shortcuts (two lines)
     switch (view) {
         case VIEW_SEARCH:
-            mvprintw(1, 0, "  /,s: search | Enter: play | Space: pause | n/p: next/prev | R: shuffle | t: jump");
+            mvprintw(1, 0, "  /,s: search | Enter: play | Space: pause | n/p: next/prev | R: shuffle | L: repeat | t: jump");
             mvprintw(2, 0, "  Left/Right: seek | a: add | d: download | f: playlists | S: settings | q: quit");
             break;
         case VIEW_PLAYLISTS:
@@ -2552,6 +2630,13 @@ static void draw_now_playing(AppState *st, int rows, int cols) {
         }
         if (st->shuffle_mode) {
             printw(" [SHUFFLE]");
+        }
+        RepeatMode effective_repeat = st->repeat_mode;
+        if (!st->playing_from_playlist && effective_repeat == REPEAT_ALL) {
+            effective_repeat = REPEAT_OFF;
+        }
+        if (effective_repeat != REPEAT_OFF) {
+            printw(" [REPEAT:%s]", repeat_mode_label(effective_repeat));
         }
     }
     
@@ -2946,8 +3031,15 @@ static void draw_settings_view(AppState *st, const char *status, int rows, int c
     if (is_selected) attroff(A_REVERSE);
     y += 2;
 
-    // Setting 4: Search Results
+    // Setting 4: Repeat Mode
     is_selected = (st->settings_selected == 4);
+    if (is_selected) attron(A_REVERSE);
+    mvprintw(y, 2, "Repeat Mode: %s", repeat_mode_label(st->repeat_mode));
+    if (is_selected) attroff(A_REVERSE);
+    y += 2;
+
+    // Setting 5: Search Results
+    is_selected = (st->settings_selected == 5);
     if (is_selected) attron(A_REVERSE);
     mvprintw(y, 2, "Search Results: %d", st->config.max_results);
     if (is_selected) attroff(A_REVERSE);
@@ -3352,6 +3444,7 @@ static void show_help(void) {
     mvprintw(y++, 6, "n/p         Next/Previous track");
     mvprintw(y++, 6, "x           Stop playback");
     mvprintw(y++, 6, "R           Toggle shuffle mode");
+    mvprintw(y++, 6, "L           Cycle repeat (OFF/ALL/ONE)");
     mvprintw(y++, 6, "Left/Right  Seek backward/forward");
     mvprintw(y++, 6, "t           Jump to time (mm:ss)");
     y++;
@@ -4004,8 +4097,83 @@ static bool handle_sync_commands(int argc, char *argv[], AppState *st) {
 // Main
 // ============================================================================
 
+// Ensure JS runtimes (deno, node) are discoverable by yt-dlp.
+// Users often install these in home-directory locations that may not be in
+// the inherited PATH when shellbeats is launched from a desktop environment.
+static void augment_path_for_js_runtimes(void) {
+    const char *home = getenv("HOME");
+    if (!home) return;
+
+    const char *current_path = getenv("PATH");
+    if (!current_path) current_path = "/usr/bin:/bin";
+
+    // Common install locations for JS runtimes
+    char deno_dir[1024], local_bin[1024];
+    snprintf(deno_dir, sizeof(deno_dir), "%s/.deno/bin", home);
+    snprintf(local_bin, sizeof(local_bin), "%s/.local/bin", home);
+
+    // Also check for nvm-managed node
+    char nvm_dir[1024];
+    snprintf(nvm_dir, sizeof(nvm_dir), "%s/.nvm/versions/node", home);
+    char nvm_node_bin[1024] = {0};
+    if (dir_exists(nvm_dir)) {
+        DIR *d = opendir(nvm_dir);
+        if (d) {
+            struct dirent *entry;
+            char latest[256] = {0};
+            int latest_major = -1, latest_minor = -1, latest_patch = -1;
+            while ((entry = readdir(d)) != NULL) {
+                if (entry->d_name[0] == 'v') {
+                    int major = 0, minor = 0, patch = 0;
+                    if (sscanf(entry->d_name, "v%d.%d.%d", &major, &minor, &patch) >= 1) {
+                        if (major > latest_major ||
+                            (major == latest_major && minor > latest_minor) ||
+                            (major == latest_major && minor == latest_minor && patch > latest_patch)) {
+                            latest_major = major;
+                            latest_minor = minor;
+                            latest_patch = patch;
+                            snprintf(latest, sizeof(latest), "%s", entry->d_name);
+                        }
+                    }
+                }
+            }
+            closedir(d);
+            if (latest[0]) {
+                snprintf(nvm_node_bin, sizeof(nvm_node_bin), "%s/%s/bin", nvm_dir, latest);
+            }
+        }
+    }
+
+    // Build augmented PATH (prepend so user installs take priority)
+    size_t new_len = strlen(current_path) + strlen(deno_dir) + strlen(local_bin) +
+                     strlen(nvm_node_bin) + 16;
+    char *new_path = malloc(new_len);
+    if (!new_path) return;
+
+    new_path[0] = '\0';
+    if (dir_exists(deno_dir)) {
+        strcat(new_path, deno_dir);
+        strcat(new_path, ":");
+    }
+    if (nvm_node_bin[0] && dir_exists(nvm_node_bin)) {
+        strcat(new_path, nvm_node_bin);
+        strcat(new_path, ":");
+    }
+    if (dir_exists(local_bin)) {
+        strcat(new_path, local_bin);
+        strcat(new_path, ":");
+    }
+    strcat(new_path, current_path);
+
+    setenv("PATH", new_path, 1);
+    free(new_path);
+}
+
 int main(int argc, char *argv[]) {
     setlocale(LC_ALL, "");
+
+    // Ensure JS runtimes are findable by yt-dlp child processes
+    augment_path_for_js_runtimes();
 
     // Initialize random seed for shuffle mode
     srand((unsigned int)time(NULL));
@@ -4363,7 +4531,14 @@ int main(int argc, char *argv[]) {
 
             case 'R': // Toggle shuffle mode
                 st.shuffle_mode = !st.shuffle_mode;
+                save_config(&st);
                 snprintf(status, sizeof(status), "Shuffle: %s", st.shuffle_mode ? "ON" : "OFF");
+                break;
+
+            case 'L': // Cycle repeat mode
+                st.repeat_mode = next_repeat_mode(st.repeat_mode);
+                save_config(&st);
+                snprintf(status, sizeof(status), "Repeat: %s", repeat_mode_label(st.repeat_mode));
                 break;
 
             case KEY_LEFT:
@@ -4809,6 +4984,8 @@ int main(int argc, char *argv[]) {
                             }
 
                             Playlist *pl = &st.playlists[idx];
+                            if (pl->youtube_playlist_url) free(pl->youtube_playlist_url);
+                            pl->youtube_playlist_url = strdup(url);
                             for (int i = 0; i < fetched; i++) {
                                 pl->items[i] = temp_songs[i];
                                 pl->count++;
@@ -4972,11 +5149,26 @@ int main(int argc, char *argv[]) {
                             draw_ui(&st, status);
 
                             char fetch_url[512] = {0};
-                            // For now, ask user to paste URL again
-                            int len = get_string_input(fetch_url, sizeof(fetch_url),
-                                "YouTube playlist URL to sync: ");
+                            int len = 0;
+                            bool use_stored_url = false;
 
-                            if (len > 0 && validate_youtube_playlist_url(fetch_url)) {
+                            // Use stored YouTube playlist URL if available
+                            if (pl->youtube_playlist_url && pl->youtube_playlist_url[0]) {
+                                strncpy(fetch_url, pl->youtube_playlist_url, sizeof(fetch_url) - 1);
+                                fetch_url[sizeof(fetch_url) - 1] = '\0';
+                                len = strlen(fetch_url);
+                                use_stored_url = true;
+                            } else {
+                                // Ask user to input URL if not stored
+                                len = get_string_input(fetch_url, sizeof(fetch_url),
+                                    "YouTube playlist URL to sync: ");
+                                if (len == 0) {
+                                    snprintf(status, sizeof(status), "Sync cancelled");
+                                    break;
+                                }
+                            }
+
+                            if (validate_youtube_playlist_url(fetch_url)) {
                                 char fetched_title[256] = {0};
                                 Song temp_songs[MAX_PLAYLIST_ITEMS];
                                 int fetched = fetch_youtube_playlist(fetch_url, temp_songs, MAX_PLAYLIST_ITEMS,
@@ -5022,10 +5214,14 @@ int main(int argc, char *argv[]) {
                                         free(temp_songs[i].url);
                                     }
 
+                                    if (pl->youtube_playlist_url) free(pl->youtube_playlist_url);
+                                    pl->youtube_playlist_url = strdup(fetch_url);
+
                                     if (new_count > 0) {
                                         save_playlist(&st, st.current_playlist_idx);
                                         snprintf(status, sizeof(status), "Added %d new songs", new_count);
                                     } else {
+                                        if (!use_stored_url) save_playlist(&st, st.current_playlist_idx);
                                         snprintf(status, sizeof(status), "Playlist is up to date");
                                     }
                                 } else {
@@ -5128,7 +5324,7 @@ int main(int argc, char *argv[]) {
 
                     case KEY_DOWN:
                     case 'j':
-                        if (st.settings_selected < 4) st.settings_selected++;
+                        if (st.settings_selected < 5) st.settings_selected++;
                         break;
 
                     case '\n':
@@ -5164,9 +5360,16 @@ int main(int argc, char *argv[]) {
                         } else if (st.settings_selected == 3) {
                             // Shuffle mode - toggle
                             st.shuffle_mode = !st.shuffle_mode;
+                            save_config(&st);
                             snprintf(status, sizeof(status), "Shuffle: %s",
                                      st.shuffle_mode ? "ON" : "OFF");
                         } else if (st.settings_selected == 4) {
+                            // Repeat mode - cycle
+                            st.repeat_mode = next_repeat_mode(st.repeat_mode);
+                            save_config(&st);
+                            snprintf(status, sizeof(status), "Repeat: %s",
+                                     repeat_mode_label(st.repeat_mode));
+                        } else if (st.settings_selected == 5) {
                             // Search results - prompt for new value
                             char res_input[16] = {0};
                             int len = get_string_input(res_input, sizeof(res_input), "Search results (10-150): ");

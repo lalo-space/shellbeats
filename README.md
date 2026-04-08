@@ -248,6 +248,7 @@ Sync is additive-only importing or pulling never removes your existing songs.
 - `ncurses` - terminal UI
 - `pthread` - background downloads
 - `curl` or `wget` - needed for yt-dlp auto-update (at least one must be installed)
+- `deno` or `node` - **recommended**: JavaScript runtime needed by yt-dlp to solve YouTube's anti-bot challenges (see below)
 
 ### yt-dlp auto-update
 
@@ -258,6 +259,19 @@ shellbeats manages its own local copy of yt-dlp independently from the system on
 3. If outdated (or missing), downloads the new binary to `~/.shellbeats/bin/yt-dlp` and marks it executable
 
 When running commands (search, download, streaming), shellbeats uses the local binary if available, otherwise falls back to the system `yt-dlp`. This means the system-installed `yt-dlp` package is only needed as a safety net, shellbeats will keep itself up to date automatically as long as `curl` or `wget` is present.
+
+### JavaScript runtime for yt-dlp
+
+YouTube uses anti-bot challenges that yt-dlp needs a JavaScript runtime to solve. Without one, some videos will fail with "This video is not available" while others work fine (it depends on which YouTube API path yt-dlp falls back to).
+
+**Install deno** (recommended, enabled by default in yt-dlp):
+```bash
+curl -fsSL https://deno.land/install.sh | sh
+```
+
+Alternatively, `node` (via nvm or system package) or `bun` also work. See the [yt-dlp EJS wiki](https://github.com/yt-dlp/yt-dlp/wiki/EJS) for details.
+
+shellbeats automatically adds common install locations (`~/.deno/bin`, nvm paths, `~/.local/bin`) to PATH at startup, so runtimes installed in user-local directories will be found by yt-dlp even if they're not in the system PATH.
 
 ## Setup
 
@@ -273,18 +287,20 @@ Install dependencies:
 ### Debian/Ubuntu
 ```bash
 sudo apt install mpv libncurses-dev libcurl4-openssl-dev libcjson-dev yt-dlp curl
+curl -fsSL https://deno.land/install.sh | sh
 ```
 ### Arch
 ```bash
-sudo pacman -S mpv ncurses curl cjson yt-dlp
+sudo pacman -S mpv ncurses curl cjson yt-dlp deno
 ```
 ### Fedora/RHEL/CentOS
 ```bash
 sudo dnf install mpv ncurses-devel libcurl-devel cJSON-devel yt-dlp curl
+curl -fsSL https://deno.land/install.sh | sh
 ```
 ### macOS (via [Homebrew](https://brew.sh/))
 ```bash
-brew install mpv yt-dlp cjson curl
+brew install mpv yt-dlp cjson curl deno
 ```
 > Note: macOS setup has not been personally tested by the author, but the community confirms there are no compilation issues. ncurses is included with Xcode Command Line Tools.
 
@@ -317,6 +333,7 @@ All shortcuts are visible in the header when you run shellbeats. Here's the comp
 | `p` | Previous track |
 | `x` | Stop playback |
 | `R` | Toggle shuffle mode |
+| `L` | Cycle repeat mode (OFF/ALL/ONE) |
 | `Left/Right` | Seek backward/forward |
 | `t` | Jump to time (mm:ss) |
 | `q` | Quit |
@@ -367,6 +384,7 @@ All shortcuts are visible in the header when you run shellbeats. Here's the comp
 | Seek Step | Seconds to skip with Left/Right keys (default: 10) |
 | Remember Session | Restore last search/playlist on startup |
 | Shuffle Mode | Randomize playback order |
+| Repeat Mode | Playback repeat state: OFF, ALL, or ONE |
 
 ## Features
 
@@ -375,6 +393,7 @@ All shortcuts are visible in the header when you run shellbeats. Here's the comp
 - **Background Downloads**: Keep using the app while downloads run
 - **YouTube Playlists**: Import entire playlists for streaming or download
 - **Shuffle Mode**: Randomize playback with infinite loop, shows `[SHUFFLE]` indicator
+- **Repeat Mode**: `ALL` loops queue/playlist, `ONE` repeats current track, shows `[REPEAT:*]`
 - **Seek Controls**: Jump forward/backward by configurable seconds, or to specific time
 - **Session Memory**: Optionally restore your last search or playlist on startup
 - **SuriSync**: Cloud sync playlists to your Surikata account
