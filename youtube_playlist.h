@@ -18,7 +18,7 @@ typedef void (*progress_callback_t)(int current_count, const char *message, void
 int fetch_youtube_playlist(const char *url, Song *songs, int max_songs,
                            char *playlist_title, size_t title_size,
                            progress_callback_t progress_callback, void *callback_data,
-                           const char *ytdlp_cmd);
+                           const char *ytdlp_cmd, const char *cookie_args);
 
 bool validate_youtube_playlist_url(const char *url);
 
