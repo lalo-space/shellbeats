@@ -66,7 +66,17 @@ typedef struct {
     int seek_step;           // Seek step in seconds (default 10)
     bool remember_session;   // Remember last session on exit
     int max_results;         // Search results limit (10-150, default 50)
+
+    // YouTube cookies (since YouTube anti-bot block, see issue #44)
+    int yt_cookies_mode;     // 0=off, 1=auto-from-browser, 2=manual file
+    char yt_cookies_browser[16];  // firefox/chrome/chromium/brave/edge/safari/opera/vivaldi
+    char yt_cookies_file[1024];   // path to cookies.txt for manual mode
 } Config;
+
+// Cookie modes
+#define YT_COOKIES_OFF 0
+#define YT_COOKIES_AUTO 1
+#define YT_COOKIES_MANUAL 2
 
 // NEW: Download task status
 typedef enum {
@@ -152,6 +162,9 @@ typedef struct {
     bool settings_editing;
     char settings_edit_buffer[1024];
     int settings_edit_pos;
+
+    // YouTube bot-check detection (set by yt-dlp invocations)
+    bool yt_blocked;
     
     // Playback timing (to ignore false end events during loading)
     time_t playback_started;
@@ -181,6 +194,14 @@ typedef struct {
     pthread_t ytdlp_update_thread;
     bool ytdlp_update_thread_running;
     char ytdlp_update_status[128];
+
+    // deno auto-install state (JS runtime for yt-dlp anti-bot)
+    char deno_local_path[1024];
+    bool deno_has_local;
+    bool deno_installing;
+    pthread_t deno_install_thread;
+    bool deno_install_thread_running;
+    char deno_install_status[128];
 
     // NEW: Spinner state for download progress
     int spinner_frame;
@@ -215,7 +236,6 @@ typedef struct {
 
 static pid_t mpv_pid = -1;
 static int mpv_ipc_fd = -1;
-static volatile sig_atomic_t got_sigchld = 0;
 
 // NEW: Global pointer for download thread access
 static AppState *g_app_state = NULL;
@@ -248,6 +268,7 @@ static void load_playlists(AppState *st);
 static void load_playlist_songs(AppState *st, int idx);
 static void save_config(AppState *st);  // NEW
 static void load_config(AppState *st);  // NEW
+static void augment_path_for_js_runtimes(void);  // re-augments PATH after deno install
 static void auto_sync_playlist(AppState *st, int idx);
 static int create_playlist(AppState *st, const char *name, bool is_youtube);
 static void free_playlist_items(Playlist *pl);
@@ -567,6 +588,13 @@ static bool init_config_dirs(AppState *st) {
     snprintf(st->ytdlp_local_path, sizeof(st->ytdlp_local_path), "%s/%s", st->ytdlp_bin_dir, YTDLP_BINARY);
     snprintf(st->ytdlp_version_file, sizeof(st->ytdlp_version_file), "%s/%s", st->config_dir, YTDLP_VERSION_FILE);
 
+    // deno auto-install path (shares ytdlp_bin_dir for simplicity)
+    snprintf(st->deno_local_path, sizeof(st->deno_local_path), "%s/deno", st->ytdlp_bin_dir);
+    st->deno_has_local = false;
+    st->deno_installing = false;
+    st->deno_install_thread_running = false;
+    st->deno_install_status[0] = '\0';
+
     st->config_dir[sizeof(st->config_dir) - 1] = '\0';
     st->playlists_dir[sizeof(st->playlists_dir) - 1] = '\0';
     st->playlists_index[sizeof(st->playlists_index) - 1] = '\0';
@@ -615,6 +643,62 @@ static const char *get_ytdlp_cmd(AppState *st) {
         return st->ytdlp_local_path;
     }
     return "yt-dlp";
+}
+
+// Build cookie args string for yt-dlp invocations.
+// out is a buffer that will be filled with " --cookies-from-browser X" or
+// " --cookies /path" (with leading space) or empty string if no cookies.
+// out_size should be at least 1100 bytes for safe path handling.
+static void build_cookie_args(AppState *st, char *out, size_t out_size) {
+    if (!out || out_size == 0) return;
+    out[0] = '\0';
+
+    if (st->config.yt_cookies_mode == YT_COOKIES_AUTO) {
+        if (st->config.yt_cookies_browser[0]) {
+            snprintf(out, out_size, " --cookies-from-browser %s",
+                     st->config.yt_cookies_browser);
+        }
+    } else if (st->config.yt_cookies_mode == YT_COOKIES_MANUAL) {
+        if (st->config.yt_cookies_file[0]) {
+            // Quote the path to handle spaces. Single quotes are safe since
+            // we don't expect the path to contain them.
+            snprintf(out, out_size, " --cookies '%s'", st->config.yt_cookies_file);
+        }
+    }
+}
+
+// Copy text to system clipboard. Tries pbcopy (macOS), wl-copy (Wayland),
+// xclip (X11), xsel (X11 fallback). Returns true on success.
+static bool copy_to_clipboard(const char *text) {
+    if (!text) return false;
+
+    const char *copiers[] = {
+        "pbcopy",                              // macOS
+        "wl-copy",                             // Wayland
+        "xclip -selection clipboard",          // X11
+        "xsel --clipboard --input",            // X11 fallback
+        NULL
+    };
+
+    for (int i = 0; copiers[i]; i++) {
+        // Check the binary exists before running
+        char check[64];
+        char first_word[32];
+        const char *space = strchr(copiers[i], ' ');
+        size_t wlen = space ? (size_t)(space - copiers[i]) : strlen(copiers[i]);
+        if (wlen >= sizeof(first_word)) continue;
+        memcpy(first_word, copiers[i], wlen);
+        first_word[wlen] = '\0';
+        snprintf(check, sizeof(check), "command -v %s >/dev/null 2>&1", first_word);
+        if (system(check) != 0) continue;
+
+        FILE *p = popen(copiers[i], "w");
+        if (!p) continue;
+        fputs(text, p);
+        int rc = pclose(p);
+        if (rc == 0) return true;
+    }
+    return false;
 }
 
 static void *ytdlp_update_thread_func(void *arg) {
@@ -808,6 +892,226 @@ static void stop_ytdlp_update(AppState *st) {
     st->ytdlp_update_thread_running = false;
 }
 
+// ============================================================================
+// deno auto-install (JS runtime needed by yt-dlp for YouTube anti-bot)
+// Downloads deno binary into ~/.shellbeats/bin/deno on first run if no JS
+// runtime is detected (deno/node/bun in PATH, or local binary already there).
+// Runs in background thread so UI is not blocked.
+// ============================================================================
+
+static bool js_runtime_already_available(AppState *st) {
+    // Check our own ~/.shellbeats/bin/deno
+    if (file_exists(st->deno_local_path)) return true;
+    // Check system PATH for deno/node/bun
+    if (system("command -v deno >/dev/null 2>&1") == 0) return true;
+    if (system("command -v node >/dev/null 2>&1") == 0) return true;
+    if (system("command -v bun >/dev/null 2>&1") == 0) return true;
+    return false;
+}
+
+static void *deno_install_thread_func(void *arg) {
+    AppState *st = (AppState *)arg;
+
+    sb_log("[DENO] thread started");
+
+    // Opt-out via env var (useful for CI / Docker / scripted setups)
+    if (getenv("SHELLBEATS_NO_AUTO_DENO")) {
+        sb_log("[DENO] SHELLBEATS_NO_AUTO_DENO is set, skipping install");
+        st->deno_install_thread_running = false;
+        return NULL;
+    }
+
+    // Skip if any JS runtime is already available (unless forced for debug)
+    bool force_install = (getenv("SHELLBEATS_FORCE_DENO_INSTALL") != NULL);
+    if (!force_install && js_runtime_already_available(st)) {
+        sb_log("[DENO] JS runtime already available, skipping install");
+        st->deno_has_local = file_exists(st->deno_local_path);
+        st->deno_install_thread_running = false;
+        return NULL;
+    }
+    if (force_install) {
+        sb_log("[DENO] SHELLBEATS_FORCE_DENO_INSTALL set, forcing install");
+    }
+
+    // Detect OS and architecture
+    char arch[64] = "x86_64";
+    bool is_macos = false;
+
+    FILE *fp = popen("uname -m 2>/dev/null", "r");
+    if (fp) {
+        if (fgets(arch, sizeof(arch), fp)) {
+            size_t len = strlen(arch);
+            while (len > 0 && (arch[len-1] == '\n' || arch[len-1] == '\r')) {
+                arch[--len] = '\0';
+            }
+        }
+        pclose(fp);
+    }
+
+    fp = popen("uname -s 2>/dev/null", "r");
+    if (fp) {
+        char osbuf[32] = "";
+        if (fgets(osbuf, sizeof(osbuf), fp)) {
+            if (strstr(osbuf, "Darwin")) is_macos = true;
+        }
+        pclose(fp);
+    }
+
+    sb_log("[DENO] detected: arch=%s, os=%s", arch, is_macos ? "darwin" : "linux");
+
+    // Build URL for the right binary
+    bool is_arm = (strstr(arch, "aarch64") || strstr(arch, "arm64"));
+    const char *deno_arch = is_arm ? "aarch64" : "x86_64";
+    char url[512];
+    if (is_macos) {
+        snprintf(url, sizeof(url),
+                 "https://github.com/denoland/deno/releases/latest/download/deno-%s-apple-darwin.zip",
+                 deno_arch);
+    } else {
+        snprintf(url, sizeof(url),
+                 "https://github.com/denoland/deno/releases/latest/download/deno-%s-unknown-linux-gnu.zip",
+                 deno_arch);
+    }
+
+    sb_log("[DENO] download URL: %s", url);
+    snprintf(st->deno_install_status, sizeof(st->deno_install_status),
+             "Downloading deno (~30MB, one-time)...");
+    st->deno_installing = true;
+
+    // Ensure bin dir exists
+    if (!dir_exists(st->ytdlp_bin_dir)) {
+        if (mkdir(st->ytdlp_bin_dir, 0755) != 0 && errno != EEXIST) {
+            sb_log("[DENO] failed to create bin dir %s: %s",
+                   st->ytdlp_bin_dir, strerror(errno));
+            snprintf(st->deno_install_status, sizeof(st->deno_install_status),
+                     "deno install failed: cannot create bin dir");
+            st->deno_installing = false;
+            st->deno_install_thread_running = false;
+            return NULL;
+        }
+    }
+
+    // Download to /tmp
+    char zip_path[1024];
+    snprintf(zip_path, sizeof(zip_path), "/tmp/shellbeats_deno_%d.zip", (int)getpid());
+
+    char cmd[2048];
+    bool has_curl = (system("command -v curl >/dev/null 2>&1") == 0);
+    bool has_wget = (system("command -v wget >/dev/null 2>&1") == 0);
+
+    if (has_curl) {
+        snprintf(cmd, sizeof(cmd),
+                 "curl -sL --fail -o '%s' '%s' >/dev/null 2>&1",
+                 zip_path, url);
+    } else if (has_wget) {
+        snprintf(cmd, sizeof(cmd),
+                 "wget -q -O '%s' '%s' >/dev/null 2>&1",
+                 zip_path, url);
+    } else {
+        sb_log("[DENO] no curl/wget available, cannot download");
+        snprintf(st->deno_install_status, sizeof(st->deno_install_status),
+                 "deno install failed: no curl/wget");
+        st->deno_installing = false;
+        st->deno_install_thread_running = false;
+        return NULL;
+    }
+
+    sb_log("[DENO] downloading: %s", cmd);
+    int rc = system(cmd);
+    sb_log("[DENO] download exit=%d", rc);
+
+    // Verify the zip was downloaded and is reasonably sized (>5MB)
+    struct stat zst;
+    if (rc != 0 || stat(zip_path, &zst) != 0 || zst.st_size < 5000000) {
+        long long sz = (stat(zip_path, &zst) == 0) ? (long long)zst.st_size : 0;
+        sb_log("[DENO] download failed or file too small (size=%lld)", sz);
+        unlink(zip_path);
+        snprintf(st->deno_install_status, sizeof(st->deno_install_status),
+                 "deno download failed (network?)");
+        st->deno_installing = false;
+        st->deno_install_thread_running = false;
+        return NULL;
+    }
+    sb_log("[DENO] download ok, zip size=%lld bytes", (long long)zst.st_size);
+
+    snprintf(st->deno_install_status, sizeof(st->deno_install_status),
+             "Extracting deno...");
+
+    // Extract: try unzip, then python3 zipfile
+    bool has_unzip = (system("command -v unzip >/dev/null 2>&1") == 0);
+    if (has_unzip) {
+        snprintf(cmd, sizeof(cmd),
+                 "unzip -o -q '%s' -d '%s' >/dev/null 2>&1",
+                 zip_path, st->ytdlp_bin_dir);
+        sb_log("[DENO] extracting with unzip: %s", cmd);
+        rc = system(cmd);
+        sb_log("[DENO] unzip exit=%d", rc);
+    } else {
+        rc = -1;
+    }
+
+    if (rc != 0 || !file_exists(st->deno_local_path)) {
+        // Fallback: python3 zipfile module
+        bool has_python3 = (system("command -v python3 >/dev/null 2>&1") == 0);
+        if (has_python3) {
+            snprintf(cmd, sizeof(cmd),
+                     "python3 -c \"import zipfile; zipfile.ZipFile('%s').extractall('%s')\" >/dev/null 2>&1",
+                     zip_path, st->ytdlp_bin_dir);
+            sb_log("[DENO] fallback python3 extraction: %s", cmd);
+            rc = system(cmd);
+            sb_log("[DENO] python3 exit=%d", rc);
+        } else {
+            sb_log("[DENO] no python3 either, extraction failed");
+        }
+    }
+
+    unlink(zip_path);
+
+    if (file_exists(st->deno_local_path)) {
+        chmod(st->deno_local_path, 0755);
+        st->deno_has_local = true;
+        sb_log("[DENO] installed successfully at %s", st->deno_local_path);
+        snprintf(st->deno_install_status, sizeof(st->deno_install_status),
+                 "deno installed (YouTube ready)");
+        // Re-augment PATH so subsequent fork/execs (mpv, yt-dlp) see it
+        augment_path_for_js_runtimes();
+    } else {
+        sb_log("[DENO] extraction failed - deno not at %s", st->deno_local_path);
+        snprintf(st->deno_install_status, sizeof(st->deno_install_status),
+                 "deno extract failed (install unzip or python3)");
+    }
+
+    st->deno_installing = false;
+    st->deno_install_thread_running = false;
+    return NULL;
+}
+
+static void start_deno_install(AppState *st) {
+    if (st->deno_install_thread_running) return;
+
+    // Quick pre-check: if a runtime is already there, skip thread entirely
+    // (unless forced via env var for debug)
+    st->deno_has_local = file_exists(st->deno_local_path);
+    bool force_install = (getenv("SHELLBEATS_FORCE_DENO_INSTALL") != NULL);
+    if (!force_install && js_runtime_already_available(st)) {
+        sb_log("[DENO] runtime already available, no install needed");
+        return;
+    }
+
+    if (pthread_create(&st->deno_install_thread, NULL,
+                       deno_install_thread_func, st) == 0) {
+        st->deno_install_thread_running = true;
+    } else {
+        sb_log("[DENO] pthread_create failed: %s", strerror(errno));
+    }
+}
+
+static void stop_deno_install(AppState *st) {
+    if (!st->deno_install_thread_running) return;
+    pthread_join(st->deno_install_thread, NULL);
+    st->deno_install_thread_running = false;
+}
+
 static const char *repeat_mode_label(RepeatMode mode) {
     switch (mode) {
         case REPEAT_ALL: return "ALL";
@@ -846,6 +1150,11 @@ static void init_default_config(AppState *st) {
 
     // Default: 50 search results
     st->config.max_results = DEFAULT_MAX_RESULTS;
+
+    // Default: cookies disabled (use yt-dlp without auth flags)
+    st->config.yt_cookies_mode = YT_COOKIES_OFF;
+    st->config.yt_cookies_browser[0] = '\0';
+    st->config.yt_cookies_file[0] = '\0';
 }
 
 static void save_config(AppState *st) {
@@ -862,6 +1171,15 @@ static void save_config(AppState *st) {
     fprintf(f, "  \"remember_session\": %s,\n", st->config.remember_session ? "true" : "false");
     fprintf(f, "  \"shuffle_mode\": %s,\n", st->shuffle_mode ? "true" : "false");
     fprintf(f, "  \"repeat_mode\": %d,\n", (int)st->repeat_mode);
+
+    // YouTube cookies config
+    char *escaped_browser = json_escape_string(st->config.yt_cookies_browser);
+    char *escaped_cookies_file = json_escape_string(st->config.yt_cookies_file);
+    fprintf(f, "  \"yt_cookies_mode\": %d,\n", st->config.yt_cookies_mode);
+    fprintf(f, "  \"yt_cookies_browser\": \"%s\",\n", escaped_browser ? escaped_browser : "");
+    fprintf(f, "  \"yt_cookies_file\": \"%s\",\n", escaped_cookies_file ? escaped_cookies_file : "");
+    free(escaped_browser);
+    free(escaped_cookies_file);
 
     // Session state (only saved if remember_session is enabled)
     if (st->config.remember_session) {
@@ -986,6 +1304,25 @@ static void load_config(AppState *st) {
     int repeat_val = json_get_int(content, "repeat_mode", REPEAT_OFF);
     if (repeat_val < REPEAT_OFF || repeat_val > REPEAT_ONE) repeat_val = REPEAT_OFF;
     st->repeat_mode = (RepeatMode)repeat_val;
+
+    // YouTube cookies config
+    int cookies_mode = json_get_int(content, "yt_cookies_mode", YT_COOKIES_OFF);
+    if (cookies_mode < YT_COOKIES_OFF || cookies_mode > YT_COOKIES_MANUAL) cookies_mode = YT_COOKIES_OFF;
+    st->config.yt_cookies_mode = cookies_mode;
+    char *cookies_browser = json_get_string(content, "yt_cookies_browser");
+    if (cookies_browser) {
+        snprintf(st->config.yt_cookies_browser, sizeof(st->config.yt_cookies_browser), "%s", cookies_browser);
+        free(cookies_browser);
+    } else {
+        st->config.yt_cookies_browser[0] = '\0';
+    }
+    char *cookies_file = json_get_string(content, "yt_cookies_file");
+    if (cookies_file) {
+        snprintf(st->config.yt_cookies_file, sizeof(st->config.yt_cookies_file), "%s", cookies_file);
+        free(cookies_file);
+    } else {
+        st->config.yt_cookies_file[0] = '\0';
+    }
 
     // Parse session state
     char *last_query = json_get_string(content, "last_query");
@@ -1241,12 +1578,14 @@ static void *download_thread_func(void *arg) {
             continue;
         }
         
-        // Build yt-dlp command (uses local binary if available)
+        // Build yt-dlp command (uses local binary if available + cookie args)
+        char cookie_args[1200];
+        build_cookie_args(st, cookie_args, sizeof(cookie_args));
         char cmd[4096];
         snprintf(cmd, sizeof(cmd),
-                 "%s -x --audio-format mp3 --no-playlist --quiet --no-warnings "
+                 "%s%s -x --audio-format mp3 --no-playlist --quiet --no-warnings "
                  "-o '%s' 'https://www.youtube.com/watch?v=%s' >/dev/null 2>&1",
-                 get_ytdlp_cmd(st), dest_path, task.video_id);
+                 get_ytdlp_cmd(st), cookie_args, dest_path, task.video_id);
         
         // Execute download
         int result = system(cmd);
@@ -1986,6 +2325,53 @@ static void mpv_seek_absolute(int seconds) {
     mpv_send_command(cmd);
 }
 
+// Sync cookie options and audio-only format into the running mpv process via IPC.
+// Needed because --ytdl-raw-options is read at mpv startup; if cookies are
+// configured later we must push them at runtime before each loadfile.
+// Also forces ytdl-format=bestaudio/best so yt-dlp picks a stream mpv can play.
+//
+// Strategy:
+//  - With JS runtime available (deno/node/bun) → use defaults: cookies + format
+//    only. yt-dlp picks the best client and resolves YouTube challenges.
+//  - WITHOUT JS runtime → fall back to extractor-args=player_client=web_safari
+//    which doesn't require JS challenge solving (less reliable but works).
+static void mpv_apply_cookie_options(AppState *st) {
+    char value[1024];
+    value[0] = '\0';
+    size_t pos = 0;
+
+    if (st->config.yt_cookies_mode == YT_COOKIES_AUTO && st->config.yt_cookies_browser[0]) {
+        pos += snprintf(value + pos, sizeof(value) - pos,
+                        "cookies-from-browser=%s",
+                        st->config.yt_cookies_browser);
+    } else if (st->config.yt_cookies_mode == YT_COOKIES_MANUAL && st->config.yt_cookies_file[0]) {
+        pos += snprintf(value + pos, sizeof(value) - pos,
+                        "cookies=%s",
+                        st->config.yt_cookies_file);
+    }
+
+    // If no JS runtime, add extractor-args fallback (less reliable but no JS needed)
+    if (!js_runtime_already_available(st)) {
+        if (pos > 0) {
+            pos += snprintf(value + pos, sizeof(value) - pos, ",");
+        }
+        snprintf(value + pos, sizeof(value) - pos,
+                 "extractor-args=youtube:player_client=web_safari");
+    }
+
+    char cmd[1500];
+    snprintf(cmd, sizeof(cmd),
+             "{\"command\":[\"set_property\",\"ytdl-raw-options\",\"%s\"]}",
+             value);
+    sb_log("[PLAYBACK] mpv_apply_cookie_options: %s", value[0] ? value : "(empty)");
+    mpv_send_command(cmd);
+
+    // Force a single audio file format (no manifest/HLS that mpv treats as playlist).
+    // Prefer m4a/webm pure audio, fallback to bestaudio.
+    mpv_send_command("{\"command\":[\"set_property\",\"ytdl-format\","
+                     "\"bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio\"]}");
+}
+
 static void mpv_load_url(const char *url) {
     sb_log("[PLAYBACK] mpv_load_url: loading URL: %s", url);
 
@@ -2034,6 +2420,20 @@ static void mpv_start_if_needed(AppState *st) {
     snprintf(ytdl_opt, sizeof(ytdl_opt), "--script-opts=ytdl_hook-ytdl_path=%s", ytdlp_path);
     sb_log("[PLAYBACK] mpv_start_if_needed: yt-dlp path for mpv: %s", ytdlp_path);
 
+    // Build cookies option for mpv (passed to yt-dlp via ytdl-raw-options)
+    char ytdl_cookie_opt[1200];
+    ytdl_cookie_opt[0] = '\0';
+    if (st->config.yt_cookies_mode == YT_COOKIES_AUTO && st->config.yt_cookies_browser[0]) {
+        snprintf(ytdl_cookie_opt, sizeof(ytdl_cookie_opt),
+                 "--ytdl-raw-options=cookies-from-browser=%s",
+                 st->config.yt_cookies_browser);
+    } else if (st->config.yt_cookies_mode == YT_COOKIES_MANUAL && st->config.yt_cookies_file[0]) {
+        snprintf(ytdl_cookie_opt, sizeof(ytdl_cookie_opt),
+                 "--ytdl-raw-options=cookies=%s",
+                 st->config.yt_cookies_file);
+    }
+    bool has_cookie_opt = (ytdl_cookie_opt[0] != '\0');
+
     pid_t pid = fork();
     if (pid == 0) {
         int fd = open("/dev/null", O_WRONLY);
@@ -2042,14 +2442,31 @@ static void mpv_start_if_needed(AppState *st) {
             dup2(fd, STDERR_FILENO);
             close(fd);
         }
-        execlp("mpv", "mpv",
-               "--no-video",
-               "--idle=yes",
-               "--force-window=no",
-               "--really-quiet",
-               "--input-ipc-server=" IPC_SOCKET,
-               ytdl_opt,
-               (char *)NULL);
+        // --ytdl-format=bestaudio ensures yt-dlp picks an audio stream that
+        // mpv can play (default selector may pick storyboard/HLS that mpv
+        // can't handle, causing "unrecognized file format" errors).
+        if (has_cookie_opt) {
+            execlp("mpv", "mpv",
+                   "--no-video",
+                   "--idle=yes",
+                   "--force-window=no",
+                   "--really-quiet",
+                   "--input-ipc-server=" IPC_SOCKET,
+                   "--ytdl-format=bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
+                   ytdl_opt,
+                   ytdl_cookie_opt,
+                   (char *)NULL);
+        } else {
+            execlp("mpv", "mpv",
+                   "--no-video",
+                   "--idle=yes",
+                   "--force-window=no",
+                   "--really-quiet",
+                   "--input-ipc-server=" IPC_SOCKET,
+                   "--ytdl-format=bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
+                   ytdl_opt,
+                   (char *)NULL);
+        }
         _exit(127);
     }
 
@@ -2182,12 +2599,15 @@ static int run_search(AppState *st, const char *raw_query) {
     }
     escaped_query[j] = '\0';
 
+    char cookie_args[1200];
+    build_cookie_args(st, cookie_args, sizeof(cookie_args));
     char cmd[2048];
+    // Merge stderr so we can detect "Sign in to confirm" YouTube bot block.
     snprintf(cmd, sizeof(cmd),
-             "%s --flat-playlist --quiet --no-warnings "
+             "%s%s --flat-playlist --quiet --no-warnings "
              "--print '%%(title)s|||%%(id)s|||%%(duration)s' "
-             "\"ytsearch%d:%s\" 2>/dev/null",
-             get_ytdlp_cmd(st), st->config.max_results, escaped_query);
+             "\"ytsearch%d:%s\" 2>&1",
+             get_ytdlp_cmd(st), cookie_args, st->config.max_results, escaped_query);
 
     sb_log("[PLAYBACK] run_search: executing: %s", cmd);
 
@@ -2196,15 +2616,21 @@ static int run_search(AppState *st, const char *raw_query) {
         sb_log("[PLAYBACK] run_search: popen() failed: %s", strerror(errno));
         return -1;
     }
-    
+
     char *line = NULL;
     size_t cap = 0;
     int count = 0;
-    
+    st->yt_blocked = false;
+
     while (count < st->config.max_results && getline(&line, &cap, fp) != -1) {
         size_t len = strlen(line);
         while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r')) {
             line[--len] = '\0';
+        }
+        // Detect YouTube bot check
+        if (strstr(line, "Sign in to confirm")) {
+            st->yt_blocked = true;
+            continue;
         }
         
         if (!line[0]) continue;
@@ -2280,6 +2706,7 @@ static void play_search_result(AppState *st, int idx) {
            st->search_results[idx].url);
 
     mpv_start_if_needed(st);
+    mpv_apply_cookie_options(st);
     mpv_load_url(st->search_results[idx].url);
 
     st->playing_index = idx;
@@ -2316,6 +2743,7 @@ static void play_playlist_song(AppState *st, int playlist_idx, int song_idx) {
            pl->is_youtube_playlist);
 
     mpv_start_if_needed(st);
+    mpv_apply_cookie_options(st);
 
     // Check if YouTube playlist - always stream
     if (pl->is_youtube_playlist) {
@@ -2556,6 +2984,17 @@ static void draw_download_status(AppState *st, int rows, int cols) {
     // yt-dlp update status (shown while updating)
     if (st->ytdlp_updating) {
         snprintf(dl_status, sizeof(dl_status), "[%c Fetching updates...]", spinner);
+        status_parts++;
+    }
+
+    // deno install status (shown while installing JS runtime)
+    if (st->deno_installing) {
+        char prev[512];
+        snprintf(prev, sizeof(prev), "%s", dl_status);
+        snprintf(dl_status, sizeof(dl_status), "%s%s[%c %s]",
+                 prev, prev[0] ? " " : "",
+                 spinner,
+                 st->deno_install_status[0] ? st->deno_install_status : "Installing deno...");
         status_parts++;
     }
 
@@ -3054,8 +3493,72 @@ static void draw_settings_view(AppState *st, const char *status, int rows, int c
     if (is_selected) attroff(A_REVERSE);
     y += 2;
 
+    // Section header for cookies
+    mvhline(y, 2, ACS_HLINE, cols - 4);
+    mvprintw(y, 4, " YouTube Cookies (workaround for YT bot check) ");
+    y += 2;
+
+    // Setting 6: Cookies Mode
+    is_selected = (st->settings_selected == 6);
+    if (is_selected) attron(A_REVERSE);
+    const char *mode_label = "Off";
+    if (st->config.yt_cookies_mode == YT_COOKIES_AUTO) mode_label = "Auto from browser";
+    else if (st->config.yt_cookies_mode == YT_COOKIES_MANUAL) mode_label = "Manual file";
+    mvprintw(y, 2, "Cookies Mode: %s", mode_label);
+    if (is_selected) attroff(A_REVERSE);
+    y += 2;
+
+    // Setting 7: Browser (cycles through supported browsers)
+    is_selected = (st->settings_selected == 7);
+    bool browser_active = (st->config.yt_cookies_mode == YT_COOKIES_AUTO);
+    if (is_selected) attron(A_REVERSE);
+    if (browser_active) {
+        mvprintw(y, 2, "Browser: %s",
+                 st->config.yt_cookies_browser[0] ? st->config.yt_cookies_browser : "(not set)");
+    } else {
+        mvprintw(y, 2, "Browser: %s (set Mode to Auto)",
+                 st->config.yt_cookies_browser[0] ? st->config.yt_cookies_browser : "—");
+    }
+    if (is_selected) attroff(A_REVERSE);
+    y += 2;
+
+    // Setting 8: Cookies File path (text input when editing)
+    is_selected = (st->settings_selected == 8);
+    bool file_active = (st->config.yt_cookies_mode == YT_COOKIES_MANUAL);
+    if (is_selected) attron(A_REVERSE);
+    if (st->settings_editing && is_selected) {
+        mvprintw(y, 2, "Cookies File:");
+        mvprintw(y + 1, 4, "%-*s", cols - 8, st->settings_edit_buffer);
+        move(y + 1, 4 + st->settings_edit_pos);
+        curs_set(1);
+    } else {
+        const char *fpath = st->config.yt_cookies_file[0] ? st->config.yt_cookies_file : "(not set)";
+        if (file_active) {
+            mvprintw(y, 2, "Cookies File: %s", fpath);
+        } else {
+            mvprintw(y, 2, "Cookies File: %s (set Mode to Manual)", fpath);
+        }
+        curs_set(0);
+    }
+    if (is_selected) attroff(A_REVERSE);
+    y += st->settings_editing && is_selected ? 3 : 2;
+
+    // Setting 9: Test cookies (action)
+    is_selected = (st->settings_selected == 9);
+    if (is_selected) attron(A_REVERSE);
+    mvprintw(y, 2, "[ Test cookies (run a real fetch) ]");
+    if (is_selected) attroff(A_REVERSE);
+    y += 2;
+
+    // Setting 10: Help link with clipboard copy
+    is_selected = (st->settings_selected == 10);
+    if (is_selected) attron(A_REVERSE);
+    mvprintw(y, 2, "[ Copy guide link: https://surikata.app/g/9fa4af84829f ]");
+    if (is_selected) attroff(A_REVERSE);
+    y += 2;
+
     // Help text
-    mvprintw(y, 2, "Up/Down: navigate | Enter: edit/toggle | Esc: back");
+    mvprintw(y, 2, "Up/Down: navigate | Enter: edit/toggle/run | Esc: back");
     y++;
 
     if (st->settings_editing) {
@@ -4117,9 +4620,17 @@ static void augment_path_for_js_runtimes(void) {
     if (!current_path) current_path = "/usr/bin:/bin";
 
     // Common install locations for JS runtimes
-    char deno_dir[1024], local_bin[1024];
+    char shellbeats_bin[1024], deno_dir[1024], local_bin[1024];
+    snprintf(shellbeats_bin, sizeof(shellbeats_bin), "%s/.shellbeats/bin", home);
     snprintf(deno_dir, sizeof(deno_dir), "%s/.deno/bin", home);
     snprintf(local_bin, sizeof(local_bin), "%s/.local/bin", home);
+
+    // XDG config dir override
+    const char *xdg_cfg = getenv("XDG_CONFIG_HOME");
+    char xdg_shellbeats_bin[1024] = {0};
+    if (xdg_cfg && xdg_cfg[0]) {
+        snprintf(xdg_shellbeats_bin, sizeof(xdg_shellbeats_bin), "%s/shellbeats/bin", xdg_cfg);
+    }
 
     // Also check for nvm-managed node
     char nvm_dir[1024];
@@ -4154,12 +4665,22 @@ static void augment_path_for_js_runtimes(void) {
     }
 
     // Build augmented PATH (prepend so user installs take priority)
-    size_t new_len = strlen(current_path) + strlen(deno_dir) + strlen(local_bin) +
-                     strlen(nvm_node_bin) + 16;
+    size_t new_len = strlen(current_path) + strlen(shellbeats_bin) +
+                     strlen(xdg_shellbeats_bin) + strlen(deno_dir) +
+                     strlen(local_bin) + strlen(nvm_node_bin) + 32;
     char *new_path = malloc(new_len);
     if (!new_path) return;
 
     new_path[0] = '\0';
+    // Highest priority: our own bin dir (where we install deno automatically)
+    if (xdg_shellbeats_bin[0] && dir_exists(xdg_shellbeats_bin)) {
+        strcat(new_path, xdg_shellbeats_bin);
+        strcat(new_path, ":");
+    }
+    if (dir_exists(shellbeats_bin)) {
+        strcat(new_path, shellbeats_bin);
+        strcat(new_path, ":");
+    }
     if (dir_exists(deno_dir)) {
         strcat(new_path, deno_dir);
         strcat(new_path, ":");
@@ -4299,6 +4820,7 @@ int main(int argc, char *argv[]) {
     // Start yt-dlp auto-update in background
     sb_log("Starting yt-dlp auto-update thread...");
     start_ytdlp_update(&st);
+    start_deno_install(&st);
 
     initscr();
     cbreak();
@@ -4428,13 +4950,25 @@ int main(int argc, char *argv[]) {
                 
                 case '\n':
                 case KEY_ENTER: // Save
-                    strncpy(st.config.download_path, st.settings_edit_buffer, 
-                            sizeof(st.config.download_path) - 1);
-                    st.config.download_path[sizeof(st.config.download_path) - 1] = '\0';
-                    save_config(&st);
-                    st.settings_editing = false;
-                    curs_set(0);
-                    snprintf(status, sizeof(status), "Download path saved");
+                    if (st.settings_selected == 8) {
+                        // Saving cookies file path
+                        strncpy(st.config.yt_cookies_file, st.settings_edit_buffer,
+                                sizeof(st.config.yt_cookies_file) - 1);
+                        st.config.yt_cookies_file[sizeof(st.config.yt_cookies_file) - 1] = '\0';
+                        save_config(&st);
+                        st.settings_editing = false;
+                        curs_set(0);
+                        snprintf(status, sizeof(status), "Cookies file path saved");
+                    } else {
+                        // Default: download path (settings_selected == 0)
+                        strncpy(st.config.download_path, st.settings_edit_buffer,
+                                sizeof(st.config.download_path) - 1);
+                        st.config.download_path[sizeof(st.config.download_path) - 1] = '\0';
+                        save_config(&st);
+                        st.settings_editing = false;
+                        curs_set(0);
+                        snprintf(status, sizeof(status), "Download path saved");
+                    }
                     break;
                 
                 case KEY_BACKSPACE:
@@ -4684,7 +5218,12 @@ int main(int argc, char *argv[]) {
                             if (r < 0) {
                                 snprintf(status, sizeof(status), "Search error!");
                             } else if (r == 0) {
-                                snprintf(status, sizeof(status), "No results for: %s", q);
+                                if (st.yt_blocked) {
+                                    snprintf(status, sizeof(status),
+                                             "YouTube blocked the request. Press 'S' -> Cookies Mode to fix.");
+                                } else {
+                                    snprintf(status, sizeof(status), "No results for: %s", q);
+                                }
                             } else {
                                 snprintf(status, sizeof(status), "Found %d results for: %s", r, q);
                             }
@@ -4956,10 +5495,12 @@ int main(int argc, char *argv[]) {
 
                             char fetched_title[256] = {0};
                             Song temp_songs[MAX_PLAYLIST_ITEMS];
+                            char yt_cookie_args[1200];
+                            build_cookie_args(&st, yt_cookie_args, sizeof(yt_cookie_args));
                             int fetched = fetch_youtube_playlist(url, temp_songs, MAX_PLAYLIST_ITEMS,
                                                                  fetched_title, sizeof(fetched_title),
                                                                  youtube_fetch_progress_callback, status,
-                                                                 get_ytdlp_cmd(&st));
+                                                                 get_ytdlp_cmd(&st), yt_cookie_args);
                             if (fetched <= 0) {
                                 snprintf(status, sizeof(status), "Failed to fetch playlist");
                                 break;
@@ -5191,10 +5732,12 @@ int main(int argc, char *argv[]) {
                             if (validate_youtube_playlist_url(fetch_url)) {
                                 char fetched_title[256] = {0};
                                 Song temp_songs[MAX_PLAYLIST_ITEMS];
+                                char yt_cookie_args[1200];
+                                build_cookie_args(&st, yt_cookie_args, sizeof(yt_cookie_args));
                                 int fetched = fetch_youtube_playlist(fetch_url, temp_songs, MAX_PLAYLIST_ITEMS,
                                                                      fetched_title, sizeof(fetched_title),
                                                                      youtube_fetch_progress_callback, status,
-                                                                     get_ytdlp_cmd(&st));
+                                                                     get_ytdlp_cmd(&st), yt_cookie_args);
 
                                 if (fetched > 0) {
                                     // Count new songs (not already in playlist)
@@ -5345,7 +5888,7 @@ int main(int argc, char *argv[]) {
 
                     case KEY_DOWN:
                     case 'j':
-                        if (st.settings_selected < 5) st.settings_selected++;
+                        if (st.settings_selected < 10) st.settings_selected++;
                         break;
 
                     case '\n':
@@ -5403,6 +5946,188 @@ int main(int argc, char *argv[]) {
                                 } else {
                                     snprintf(status, sizeof(status), "Invalid value (must be 10-150)");
                                 }
+                            }
+                        } else if (st.settings_selected == 6) {
+                            // Cookies mode - cycle off -> auto -> manual
+                            st.config.yt_cookies_mode = (st.config.yt_cookies_mode + 1) % 3;
+                            // Default browser when entering auto mode the first time
+                            if (st.config.yt_cookies_mode == YT_COOKIES_AUTO &&
+                                !st.config.yt_cookies_browser[0]) {
+                                snprintf(st.config.yt_cookies_browser,
+                                         sizeof(st.config.yt_cookies_browser),
+                                         "firefox");
+                            }
+                            save_config(&st);
+                            const char *lab = "Off";
+                            if (st.config.yt_cookies_mode == YT_COOKIES_AUTO) lab = "Auto from browser";
+                            else if (st.config.yt_cookies_mode == YT_COOKIES_MANUAL) lab = "Manual file";
+                            snprintf(status, sizeof(status), "Cookies mode: %s", lab);
+                        } else if (st.settings_selected == 7) {
+                            // Browser - cycle through supported list
+                            if (st.config.yt_cookies_mode != YT_COOKIES_AUTO) {
+                                snprintf(status, sizeof(status), "Set Cookies Mode to 'Auto from browser' first");
+                            } else {
+                                static const char *browsers[] = {
+                                    "firefox", "chrome", "chromium", "brave",
+                                    "edge", "safari", "opera", "vivaldi"
+                                };
+                                int n = (int)(sizeof(browsers) / sizeof(browsers[0]));
+                                int idx = 0;
+                                for (int i = 0; i < n; i++) {
+                                    if (strcmp(st.config.yt_cookies_browser, browsers[i]) == 0) {
+                                        idx = i;
+                                        break;
+                                    }
+                                }
+                                idx = (idx + 1) % n;
+                                snprintf(st.config.yt_cookies_browser,
+                                         sizeof(st.config.yt_cookies_browser),
+                                         "%s", browsers[idx]);
+                                save_config(&st);
+                                if (strcmp(browsers[idx], "safari") == 0) {
+                                    snprintf(status, sizeof(status),
+                                             "Browser: safari (may need 'Full Disk Access' for terminal in macOS Settings)");
+                                } else {
+                                    snprintf(status, sizeof(status), "Browser: %s", browsers[idx]);
+                                }
+                            }
+                        } else if (st.settings_selected == 8) {
+                            // Cookies file path - text input
+                            if (st.config.yt_cookies_mode != YT_COOKIES_MANUAL) {
+                                snprintf(status, sizeof(status), "Set Cookies Mode to 'Manual file' first");
+                            } else {
+                                st.settings_editing = true;
+                                strncpy(st.settings_edit_buffer, st.config.yt_cookies_file,
+                                        sizeof(st.settings_edit_buffer) - 1);
+                                st.settings_edit_buffer[sizeof(st.settings_edit_buffer) - 1] = '\0';
+                                st.settings_edit_pos = strlen(st.settings_edit_buffer);
+                                snprintf(status, sizeof(status), "Editing cookies file path...");
+                            }
+                        } else if (st.settings_selected == 9) {
+                            // Test cookies - run a real fetch
+                            snprintf(status, sizeof(status), "Testing yt-dlp with current cookies config...");
+                            draw_ui(&st, status);
+
+                            char cookie_args[1200];
+                            build_cookie_args(&st, cookie_args, sizeof(cookie_args));
+                            // Test command:
+                            //   --no-config: ignore any user yt-dlp config that may
+                            //                force a specific format
+                            //   --ignore-no-formats-error: continue even if no format
+                            //                              matches (we only want metadata)
+                            //   --dump-json: get all metadata as JSON
+                            // We test with a known stable video (Rick Astley).
+                            char test_cmd[2048];
+                            snprintf(test_cmd, sizeof(test_cmd),
+                                     "%s%s --no-config --ignore-no-formats-error "
+                                     "--dump-json --no-warnings "
+                                     "'https://www.youtube.com/watch?v=dQw4w9WgXcQ' 2>&1",
+                                     get_ytdlp_cmd(&st), cookie_args);
+
+                            sb_log("[COOKIES TEST] command: %s", test_cmd);
+
+                            FILE *fp = popen(test_cmd, "r");
+                            if (!fp) {
+                                snprintf(status, sizeof(status), "Test failed: cannot run yt-dlp");
+                                sb_log("[COOKIES TEST] popen failed: %s", strerror(errno));
+                            } else {
+                                // Read output (could be a long JSON)
+                                char *full_out = NULL;
+                                size_t cap = 0, total = 0;
+                                char chunk[4096];
+                                size_t n;
+                                while ((n = fread(chunk, 1, sizeof(chunk), fp)) > 0) {
+                                    if (total + n + 1 > cap) {
+                                        cap = (cap == 0) ? 8192 : cap * 2;
+                                        if (total + n + 1 > cap) cap = total + n + 1;
+                                        char *nb = realloc(full_out, cap);
+                                        if (!nb) break;
+                                        full_out = nb;
+                                    }
+                                    memcpy(full_out + total, chunk, n);
+                                    total += n;
+                                }
+                                if (full_out) full_out[total] = '\0';
+                                int rc = pclose(fp);
+
+                                sb_log("[COOKIES TEST] exit=%d, output_len=%zu", rc, total);
+                                if (full_out && total > 0) {
+                                    // Log only first 800 chars to avoid huge JSON dumps
+                                    size_t log_len = total > 800 ? 800 : total;
+                                    char *log_buf = malloc(log_len + 4);
+                                    if (log_buf) {
+                                        memcpy(log_buf, full_out, log_len);
+                                        if (total > 800) {
+                                            log_buf[log_len] = '.';
+                                            log_buf[log_len+1] = '.';
+                                            log_buf[log_len+2] = '.';
+                                            log_buf[log_len+3] = '\0';
+                                        } else {
+                                            log_buf[log_len] = '\0';
+                                        }
+                                        sb_log("[COOKIES TEST] output: %s", log_buf);
+                                        free(log_buf);
+                                    }
+                                }
+
+                                // Find first error line for the status bar
+                                char first_err[256] = {0};
+                                if (full_out) {
+                                    const char *err_pos = strstr(full_out, "ERROR");
+                                    if (err_pos) {
+                                        const char *eol = strchr(err_pos, '\n');
+                                        size_t elen = eol ? (size_t)(eol - err_pos) : strlen(err_pos);
+                                        if (elen > sizeof(first_err) - 1) elen = sizeof(first_err) - 1;
+                                        memcpy(first_err, err_pos, elen);
+                                        first_err[elen] = '\0';
+                                    }
+                                }
+
+                                bool looks_like_json = (full_out && full_out[0] == '{' && strstr(full_out, "\"title\""));
+
+                                if (rc == 0 && looks_like_json) {
+                                    // Extract title from JSON for friendly message
+                                    char title[256] = "(unknown)";
+                                    const char *tp = strstr(full_out, "\"title\"");
+                                    if (tp) {
+                                        tp = strchr(tp, ':');
+                                        if (tp) {
+                                            tp++;
+                                            while (*tp == ' ' || *tp == '\t') tp++;
+                                            if (*tp == '"') {
+                                                tp++;
+                                                size_t i = 0;
+                                                while (*tp && *tp != '"' && i < sizeof(title) - 1) {
+                                                    if (*tp == '\\' && tp[1]) tp++;
+                                                    title[i++] = *tp++;
+                                                }
+                                                title[i] = '\0';
+                                            }
+                                        }
+                                    }
+                                    snprintf(status, sizeof(status), "OK - fetched: %s", title);
+                                } else if (full_out && strstr(full_out, "Sign in to confirm")) {
+                                    snprintf(status, sizeof(status),
+                                             "FAIL - YouTube bot check. Configure cookies above. Full log: ~/.shellbeats/shellbeats.log");
+                                } else if (first_err[0]) {
+                                    snprintf(status, sizeof(status),
+                                             "FAIL - %s | full log: ~/.shellbeats/shellbeats.log",
+                                             first_err);
+                                } else {
+                                    snprintf(status, sizeof(status),
+                                             "FAIL - exit=%d. Check log: ~/.shellbeats/shellbeats.log",
+                                             rc);
+                                }
+                                free(full_out);
+                            }
+                        } else if (st.settings_selected == 10) {
+                            // Copy guide link to clipboard
+                            const char *link = "https://surikata.app/g/9fa4af84829f";
+                            if (copy_to_clipboard(link)) {
+                                snprintf(status, sizeof(status), "Guide link copied to clipboard");
+                            } else {
+                                snprintf(status, sizeof(status),
+                                         "No clipboard helper found. Copy this URL manually: %s", link);
                             }
                         }
                         break;
@@ -5709,6 +6434,7 @@ int main(int argc, char *argv[]) {
     // NEW: Stop download thread
     stop_download_thread(&st);
     stop_ytdlp_update(&st);
+    stop_deno_install(&st);
     pthread_mutex_destroy(&st.download_queue.mutex);
 
     endwin();
