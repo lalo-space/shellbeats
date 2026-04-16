@@ -16,7 +16,7 @@ You can download it here
 [![Shellbeats NG Windows and OSX Version]](https://surikata.app/g/9fa4af84829f)
 
 **v0.7**
-- Added Cookies for yt-dlp management because some ip's were blocked by youtube, you can now import cookies from browse, guide here [![Shellbeats NG Windows and OSX Version]](https://surikata.app/g/9fa4af84829f)
+- Added Cookies for yt-dlp management because some ip's were blocked by youtube, you can now import cookies from browse, guide here [![Shellbeats Cookie Management]](https://surikata.app/g/9fa4af84829f)
 - Fixed **pause state desync**: switching playlist and starting a new song while paused no longer causes inverted pause/play state. mpv is now explicitly unpaused on every `loadfile`.
 - Added **XDG_CONFIG_HOME support**: if `$XDG_CONFIG_HOME/shellbeats` exists, it is used instead of `~/.shellbeats`. Existing setups are unaffected.
 - Added **SuriSync** cloud sync integration: push/pull playlists to your Surikata account. Redesigned menu with contextual help text.
