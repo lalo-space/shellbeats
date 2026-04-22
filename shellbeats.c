@@ -27,10 +27,11 @@
 #include <limits.h>
 #include "youtube_playlist.h"
 #include "surikata_sync.h"
+#include "sb_exec.h"
 
 #define MAX_RESULTS 150
 #define DEFAULT_MAX_RESULTS 50
-#define SHELLBEATS_VERSION "0.7"
+#define SHELLBEATS_VERSION "0.7.1"
 #define MAX_PLAYLISTS 50
 #define MAX_PLAYLIST_ITEMS 500
 #define IPC_SOCKET "/tmp/shellbeats_mpv.sock"
@@ -336,8 +337,25 @@ static bool mkdir_p(const char *path) {
     return true;
 }
 
+// Validate a YouTube video_id loaded from disk/external input before we ever
+// pass it to yt-dlp. YT ids are 11 chars of [A-Za-z0-9_-]. Reject everything
+// else — defense in depth on top of sb_exec (no shell, no injection possible,
+// but we still don't want to spawn yt-dlp with absurd input).
+static bool is_valid_video_id(const char *s) {
+    if (!s) return false;
+    size_t n = strlen(s);
+    if (n != 11) return false;
+    for (size_t i = 0; i < n; i++) {
+        char c = s[i];
+        bool ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                  (c >= '0' && c <= '9') || c == '-' || c == '_';
+        if (!ok) return false;
+    }
+    return true;
+}
+
 // NEW: Sanitize title for filename
-static void sanitize_title_for_filename(const char *title, const char *video_id, 
+static void sanitize_title_for_filename(const char *title, const char *video_id,
                                          char *out, size_t out_size) {
     if (!title || !video_id || !out || out_size < 32) {
         if (out && out_size > 0) out[0] = '\0';
@@ -828,21 +846,26 @@ static void *ytdlp_update_thread_func(void *arg) {
     snprintf(st->ytdlp_update_status, sizeof(st->ytdlp_update_status),
              "Downloading yt-dlp %s...", tag);
 
-    char dl_cmd[2048];
+    const char *ytdlp_url =
+        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp";
+    int result;
     if (has_curl) {
-        snprintf(dl_cmd, sizeof(dl_cmd),
-                 "curl -sL 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp' "
-                 "-o '%s' 2>/dev/null && chmod +x '%s'",
-                 st->ytdlp_local_path, st->ytdlp_local_path);
+        char *dl_argv[] = {
+            "curl", "-sL", (char *)ytdlp_url, "-o", st->ytdlp_local_path, NULL
+        };
+        sb_log("  dl: curl -sL %s -o %s", ytdlp_url, st->ytdlp_local_path);
+        result = sb_exec_status(dl_argv, 1);
     } else {
-        snprintf(dl_cmd, sizeof(dl_cmd),
-                 "wget -q 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp' "
-                 "-O '%s' 2>/dev/null && chmod +x '%s'",
-                 st->ytdlp_local_path, st->ytdlp_local_path);
+        char *dl_argv[] = {
+            "wget", "-q", (char *)ytdlp_url, "-O", st->ytdlp_local_path, NULL
+        };
+        sb_log("  dl: wget -q %s -O %s", ytdlp_url, st->ytdlp_local_path);
+        result = sb_exec_status(dl_argv, 1);
     }
-    sb_log("  dl_cmd: %s", dl_cmd);
-
-    int result = system(dl_cmd);
+    if (result == 0 && file_exists(st->ytdlp_local_path)) {
+        char *chmod_argv[] = { "chmod", "+x", st->ytdlp_local_path, NULL };
+        sb_exec_status(chmod_argv, 1);
+    }
     sb_log("  download result: %d", result);
     sb_log("  file exists after download: %s", file_exists(st->ytdlp_local_path) ? "yes" : "no");
 
@@ -995,18 +1018,22 @@ static void *deno_install_thread_func(void *arg) {
     char zip_path[1024];
     snprintf(zip_path, sizeof(zip_path), "/tmp/shellbeats_deno_%d.zip", (int)getpid());
 
-    char cmd[2048];
     bool has_curl = (system("command -v curl >/dev/null 2>&1") == 0);
     bool has_wget = (system("command -v wget >/dev/null 2>&1") == 0);
 
+    int rc;
     if (has_curl) {
-        snprintf(cmd, sizeof(cmd),
-                 "curl -sL --fail -o '%s' '%s' >/dev/null 2>&1",
-                 zip_path, url);
+        char *dl_argv[] = {
+            "curl", "-sL", "--fail", "-o", zip_path, (char *)url, NULL
+        };
+        sb_log("[DENO] downloading via curl: %s -> %s", url, zip_path);
+        rc = sb_exec_status(dl_argv, 1);
     } else if (has_wget) {
-        snprintf(cmd, sizeof(cmd),
-                 "wget -q -O '%s' '%s' >/dev/null 2>&1",
-                 zip_path, url);
+        char *dl_argv[] = {
+            "wget", "-q", "-O", zip_path, (char *)url, NULL
+        };
+        sb_log("[DENO] downloading via wget: %s -> %s", url, zip_path);
+        rc = sb_exec_status(dl_argv, 1);
     } else {
         sb_log("[DENO] no curl/wget available, cannot download");
         snprintf(st->deno_install_status, sizeof(st->deno_install_status),
@@ -1015,9 +1042,6 @@ static void *deno_install_thread_func(void *arg) {
         st->deno_install_thread_running = false;
         return NULL;
     }
-
-    sb_log("[DENO] downloading: %s", cmd);
-    int rc = system(cmd);
     sb_log("[DENO] download exit=%d", rc);
 
     // Verify the zip was downloaded and is reasonably sized (>5MB)
@@ -1040,25 +1064,28 @@ static void *deno_install_thread_func(void *arg) {
     // Extract: try unzip, then python3 zipfile
     bool has_unzip = (system("command -v unzip >/dev/null 2>&1") == 0);
     if (has_unzip) {
-        snprintf(cmd, sizeof(cmd),
-                 "unzip -o -q '%s' -d '%s' >/dev/null 2>&1",
-                 zip_path, st->ytdlp_bin_dir);
-        sb_log("[DENO] extracting with unzip: %s", cmd);
-        rc = system(cmd);
+        char *unzip_argv[] = {
+            "unzip", "-o", "-q", zip_path, "-d", st->ytdlp_bin_dir, NULL
+        };
+        sb_log("[DENO] extracting with unzip -> %s", st->ytdlp_bin_dir);
+        rc = sb_exec_status(unzip_argv, 1);
         sb_log("[DENO] unzip exit=%d", rc);
     } else {
         rc = -1;
     }
 
     if (rc != 0 || !file_exists(st->deno_local_path)) {
-        // Fallback: python3 zipfile module
+        // Fallback: python3 zipfile module. Pass paths as sys.argv to keep
+        // the python script a constant string (never interpolates data).
         bool has_python3 = (system("command -v python3 >/dev/null 2>&1") == 0);
         if (has_python3) {
-            snprintf(cmd, sizeof(cmd),
-                     "python3 -c \"import zipfile; zipfile.ZipFile('%s').extractall('%s')\" >/dev/null 2>&1",
-                     zip_path, st->ytdlp_bin_dir);
-            sb_log("[DENO] fallback python3 extraction: %s", cmd);
-            rc = system(cmd);
+            char *py_argv[] = {
+                "python3", "-c",
+                "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])",
+                zip_path, st->ytdlp_bin_dir, NULL
+            };
+            sb_log("[DENO] fallback python3 extraction -> %s", st->ytdlp_bin_dir);
+            rc = sb_exec_status(py_argv, 1);
             sb_log("[DENO] python3 exit=%d", rc);
         } else {
             sb_log("[DENO] no python3 either, extraction failed");
@@ -1362,6 +1389,13 @@ static void load_config(AppState *st) {
                     char *url = json_get_string(obj, "url");
                     int dur = json_get_int(obj, "duration", 0);
 
+                    if (!is_valid_video_id(vid)) {
+                        free(title); free(vid); free(url);
+                        free(obj);
+                        arr = obj_end + 1;
+                        continue;
+                    }
+
                     st->cached_search[i].title = title;
                     st->cached_search[i].video_id = vid;
                     st->cached_search[i].url = url;
@@ -1481,9 +1515,9 @@ static void load_download_queue(AppState *st) {
         char *playlist = json_get_string(obj, "playlist");
         char *status_str = json_get_string(obj, "status");
         
-        if (video_id && video_id[0]) {
+        if (is_valid_video_id(video_id)) {
             DownloadTask *task = &st->download_queue.tasks[st->download_queue.count];
-            
+
             strncpy(task->video_id, video_id, sizeof(task->video_id) - 1);
             strncpy(task->title, title ? title : "", sizeof(task->title) - 1);
             strncpy(task->sanitized_filename, filename ? filename : "", sizeof(task->sanitized_filename) - 1);
@@ -1578,17 +1612,33 @@ static void *download_thread_func(void *arg) {
             continue;
         }
         
-        // Build yt-dlp command (uses local binary if available + cookie args)
+        // Build yt-dlp argv (shell-free execution; video_id comes from JSON
+        // on disk and must NEVER be interpolated into a shell command).
         char cookie_args[1200];
         build_cookie_args(st, cookie_args, sizeof(cookie_args));
-        char cmd[4096];
-        snprintf(cmd, sizeof(cmd),
-                 "%s%s -x --audio-format mp3 --no-playlist --quiet --no-warnings "
-                 "-o '%s' 'https://www.youtube.com/watch?v=%s' >/dev/null 2>&1",
-                 get_ytdlp_cmd(st), cookie_args, dest_path, task.video_id);
-        
-        // Execute download
-        int result = system(cmd);
+
+        char url[256];
+        snprintf(url, sizeof(url), "https://www.youtube.com/watch?v=%s", task.video_id);
+
+        char *argv[24];
+        int ac = 0;
+        argv[ac++] = (char *)get_ytdlp_cmd(st);
+        int cookie_from = ac;
+        sb_parse_cookie_args(cookie_args, argv, &ac, 24);
+        int cookie_to = ac;
+        argv[ac++] = "-x";
+        argv[ac++] = "--audio-format";
+        argv[ac++] = "mp3";
+        argv[ac++] = "--no-playlist";
+        argv[ac++] = "--quiet";
+        argv[ac++] = "--no-warnings";
+        argv[ac++] = "-o";
+        argv[ac++] = dest_path;
+        argv[ac++] = url;
+        argv[ac] = NULL;
+
+        int result = sb_exec_status(argv, 1);
+        sb_free_cookie_args(argv, cookie_from, cookie_to);
         
         pthread_mutex_lock(&st->download_queue.mutex);
         
@@ -1937,7 +1987,7 @@ static void load_playlist_songs(AppState *st, int idx) {
         char *video_id = json_get_string(obj, "video_id");
         int duration = json_get_int(obj, "duration", 0);
 
-        if (title && video_id && video_id[0]) {
+        if (title && is_valid_video_id(video_id)) {
             pl->items[pl->count].title = title;
             pl->items[pl->count].video_id = video_id;
 
@@ -2587,33 +2637,35 @@ static int run_search(AppState *st, const char *raw_query) {
 
     sb_log("[PLAYBACK] run_search: query=\"%s\"", query);
 
-    // Escape for shell
-    char escaped_query[512];
-    size_t j = 0;
-    for (size_t i = 0; query[i] && j < sizeof(escaped_query) - 5; i++) {
-        char c = query[i];
-        if (c == '"' || c == '\\' || c == '$' || c == '`') {
-            escaped_query[j++] = '\\';
-        }
-        escaped_query[j++] = c;
-    }
-    escaped_query[j] = '\0';
-
     char cookie_args[1200];
     build_cookie_args(st, cookie_args, sizeof(cookie_args));
-    char cmd[2048];
-    // Merge stderr so we can detect "Sign in to confirm" YouTube bot block.
-    snprintf(cmd, sizeof(cmd),
-             "%s%s --flat-playlist --quiet --no-warnings "
-             "--print '%%(title)s|||%%(id)s|||%%(duration)s' "
-             "\"ytsearch%d:%s\" 2>&1",
-             get_ytdlp_cmd(st), cookie_args, st->config.max_results, escaped_query);
 
-    sb_log("[PLAYBACK] run_search: executing: %s", cmd);
+    char search_term[512];
+    snprintf(search_term, sizeof(search_term),
+             "ytsearch%d:%s", st->config.max_results, query);
 
-    FILE *fp = popen(cmd, "r");
+    char *argv[20];
+    int ac = 0;
+    argv[ac++] = (char *)get_ytdlp_cmd(st);
+    int cookie_from = ac;
+    sb_parse_cookie_args(cookie_args, argv, &ac, 20);
+    int cookie_to = ac;
+    argv[ac++] = "--flat-playlist";
+    argv[ac++] = "--quiet";
+    argv[ac++] = "--no-warnings";
+    argv[ac++] = "--print";
+    argv[ac++] = "%(title)s|||%(id)s|||%(duration)s";
+    argv[ac++] = search_term;
+    argv[ac] = NULL;
+
+    sb_log("[PLAYBACK] run_search: executing ytsearch%d:%s",
+           st->config.max_results, query);
+
+    /* merge_stderr = 1: preserve existing bot-check detection path */
+    FILE *fp = sb_exec_popen(argv, 1);
+    sb_free_cookie_args(argv, cookie_from, cookie_to);
     if (!fp) {
-        sb_log("[PLAYBACK] run_search: popen() failed: %s", strerror(errno));
+        sb_log("[PLAYBACK] run_search: sb_exec_popen() failed: %s", strerror(errno));
         return -1;
     }
 
@@ -2674,8 +2726,8 @@ static int run_search(AppState *st, const char *raw_query) {
     }
     
     free(line);
-    pclose(fp);
-    
+    sb_exec_pclose(fp);
+
     st->search_count = count;
     st->search_selected = 0;
     st->search_scroll = 0;
@@ -6010,26 +6062,27 @@ int main(int argc, char *argv[]) {
 
                             char cookie_args[1200];
                             build_cookie_args(&st, cookie_args, sizeof(cookie_args));
-                            // Test command:
-                            //   --no-config: ignore any user yt-dlp config that may
-                            //                force a specific format
-                            //   --ignore-no-formats-error: continue even if no format
-                            //                              matches (we only want metadata)
-                            //   --dump-json: get all metadata as JSON
-                            // We test with a known stable video (Rick Astley).
-                            char test_cmd[2048];
-                            snprintf(test_cmd, sizeof(test_cmd),
-                                     "%s%s --no-config --ignore-no-formats-error "
-                                     "--dump-json --no-warnings "
-                                     "'https://www.youtube.com/watch?v=dQw4w9WgXcQ' 2>&1",
-                                     get_ytdlp_cmd(&st), cookie_args);
+                            // Test with a known stable video (Rick Astley).
+                            char *test_argv[16];
+                            int tac = 0;
+                            test_argv[tac++] = (char *)get_ytdlp_cmd(&st);
+                            int cookie_from = tac;
+                            sb_parse_cookie_args(cookie_args, test_argv, &tac, 16);
+                            int cookie_to = tac;
+                            test_argv[tac++] = "--no-config";
+                            test_argv[tac++] = "--ignore-no-formats-error";
+                            test_argv[tac++] = "--dump-json";
+                            test_argv[tac++] = "--no-warnings";
+                            test_argv[tac++] = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+                            test_argv[tac] = NULL;
 
-                            sb_log("[COOKIES TEST] command: %s", test_cmd);
+                            sb_log("[COOKIES TEST] running yt-dlp --dump-json for Rick Astley");
 
-                            FILE *fp = popen(test_cmd, "r");
+                            FILE *fp = sb_exec_popen(test_argv, 1);
+                            sb_free_cookie_args(test_argv, cookie_from, cookie_to);
                             if (!fp) {
                                 snprintf(status, sizeof(status), "Test failed: cannot run yt-dlp");
-                                sb_log("[COOKIES TEST] popen failed: %s", strerror(errno));
+                                sb_log("[COOKIES TEST] sb_exec_popen failed: %s", strerror(errno));
                             } else {
                                 // Read output (could be a long JSON)
                                 char *full_out = NULL;
@@ -6048,7 +6101,7 @@ int main(int argc, char *argv[]) {
                                     total += n;
                                 }
                                 if (full_out) full_out[total] = '\0';
-                                int rc = pclose(fp);
+                                int rc = sb_exec_pclose(fp);
 
                                 sb_log("[COOKIES TEST] exit=%d, output_len=%zu", rc, total);
                                 if (full_out && total > 0) {

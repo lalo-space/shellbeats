@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "youtube_playlist.h"
+#include "sb_exec.h"
 
 int fetch_youtube_playlist(const char *url, Song *songs, int max_songs,
                            char *playlist_title, size_t title_size,
@@ -14,18 +15,32 @@ int fetch_youtube_playlist(const char *url, Song *songs, int max_songs,
     if (!ytdlp_cmd || !ytdlp_cmd[0]) ytdlp_cmd = "yt-dlp";
     if (!cookie_args) cookie_args = "";
 
+    /* Guard: validate_youtube_playlist_url() is the caller's job, but belt+braces.
+     * Reject a URL that starts with a dash to avoid it being parsed as a flag. */
+    if (url[0] == '-') return -1;
+
     // Report: Fetching playlist title
     if (progress_callback) {
         progress_callback(0, "Fetching playlist info...", callback_data);
     }
 
-    char title_cmd[2048];
-    snprintf(title_cmd, sizeof(title_cmd),
-             "%s%s --flat-playlist --quiet --no-warnings "
-             "--print '%%(playlist_title)s' '%s' 2>/dev/null",
-             ytdlp_cmd, cookie_args, url);
+    /* --- Fetch playlist title --- */
+    char *title_argv[16];
+    int tac = 0;
+    title_argv[tac++] = (char *)ytdlp_cmd;
+    int cookie_from_t = tac;
+    sb_parse_cookie_args(cookie_args, title_argv, &tac, 16);
+    int cookie_to_t = tac;
+    title_argv[tac++] = "--flat-playlist";
+    title_argv[tac++] = "--quiet";
+    title_argv[tac++] = "--no-warnings";
+    title_argv[tac++] = "--print";
+    title_argv[tac++] = "%(playlist_title)s";
+    title_argv[tac++] = (char *)url;
+    title_argv[tac] = NULL;
 
-    FILE *title_fp = popen(title_cmd, "r");
+    FILE *title_fp = sb_exec_popen(title_argv, 0);
+    sb_free_cookie_args(title_argv, cookie_from_t, cookie_to_t);
     if (!title_fp) return -1;
 
     char *title_line = NULL;
@@ -42,20 +57,30 @@ int fetch_youtube_playlist(const char *url, Song *songs, int max_songs,
         }
     }
     free(title_line);
-    pclose(title_fp);
+    sb_exec_pclose(title_fp);
 
     // Report: Fetching songs
     if (progress_callback) {
         progress_callback(0, "Fetching songs...", callback_data);
     }
 
-    char cmd[2048];
-    snprintf(cmd, sizeof(cmd),
-             "%s%s --flat-playlist --quiet --no-warnings "
-             "--print '%%(title)s|||%%(id)s|||%%(duration)s' "
-             "'%s' 2>/dev/null", ytdlp_cmd, cookie_args, url);
+    /* --- Fetch song list --- */
+    char *list_argv[16];
+    int lac = 0;
+    list_argv[lac++] = (char *)ytdlp_cmd;
+    int cookie_from_l = lac;
+    sb_parse_cookie_args(cookie_args, list_argv, &lac, 16);
+    int cookie_to_l = lac;
+    list_argv[lac++] = "--flat-playlist";
+    list_argv[lac++] = "--quiet";
+    list_argv[lac++] = "--no-warnings";
+    list_argv[lac++] = "--print";
+    list_argv[lac++] = "%(title)s|||%(id)s|||%(duration)s";
+    list_argv[lac++] = (char *)url;
+    list_argv[lac] = NULL;
 
-    FILE *fp = popen(cmd, "r");
+    FILE *fp = sb_exec_popen(list_argv, 0);
+    sb_free_cookie_args(list_argv, cookie_from_l, cookie_to_l);
     if (!fp) return -1;
 
     char *line = NULL;
@@ -106,15 +131,15 @@ int fetch_youtube_playlist(const char *url, Song *songs, int max_songs,
     }
 
     free(line);
-    pclose(fp);
-    
+    sb_exec_pclose(fp);
+
     // Report: Complete
     if (progress_callback && count > 0) {
         char msg[128];
         snprintf(msg, sizeof(msg), "Completed! Fetched %d songs", count);
         progress_callback(count, msg, callback_data);
     }
-    
+
     return count;
 }
 

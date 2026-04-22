@@ -15,7 +15,7 @@ else
 endif
 
 TARGET = shellbeats
-SRC = shellbeats.c youtube_playlist.c surikata_sync.c
+SRC = shellbeats.c youtube_playlist.c surikata_sync.c sb_exec.c
 
 .PHONY: all clean install uninstall
 
