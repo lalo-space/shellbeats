@@ -15,6 +15,9 @@ https://shellbeats.com
 You can download it here 
 [![Shellbeats NG Windows and OSX Version]](https://surikata.app/g/9fa4af84829f)
 
+**v0.7.2**
+- Raised maximum number of playlists from 50 to 300.
+
 **v0.7.1**
 - **Security fix**: shell command injection in playlist download and related yt-dlp calls. A crafted `video_id` in a playlist JSON (e.g. imported via SuriSync or a shared `.json` file) could break out of the quoted URL passed to `system()`/`popen()` and run arbitrary commands. All call sites that interpolate external data now use `fork()` + `execvp()` via the new `sb_exec` wrapper, so no shell is invoked and no metacharacter is interpreted. Added defensive `is_valid_video_id()` validation at JSON load time.
 
@@ -38,7 +41,7 @@ You can download it here
 - Added **YouTube playlist sync** (`u` key): update imported YouTube playlists with new songs added on YouTube.
 - New Settings options: Seek Step (configurable), Remember Session (toggle), Shuffle Mode (toggle).
 
-# shellbeats V0.7.1
+# shellbeats V0.7.2
 
 ![Demo](shellbeats.gif)
 

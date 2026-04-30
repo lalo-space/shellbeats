@@ -31,8 +31,8 @@
 
 #define MAX_RESULTS 150
 #define DEFAULT_MAX_RESULTS 50
-#define SHELLBEATS_VERSION "0.7.1"
-#define MAX_PLAYLISTS 50
+#define SHELLBEATS_VERSION "0.7.2"
+#define MAX_PLAYLISTS 300
 #define MAX_PLAYLIST_ITEMS 500
 #define IPC_SOCKET "/tmp/shellbeats_mpv.sock"
 #define CONFIG_DIR ".shellbeats"
@@ -4784,7 +4784,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    AppState st = {0};
+    static AppState st = {0};  // BSS-allocated: AppState is ~6MB with MAX_PLAYLISTS=300, too large for stack
     st.playing_index = -1;
     st.playing_playlist_idx = -1;
     st.current_playlist_idx = -1;
