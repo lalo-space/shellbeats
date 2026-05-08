@@ -15,6 +15,10 @@ https://shellbeats.com
 You can download it here 
 [![Shellbeats NG Windows and OSX Version]](https://surikata.app/g/9fa4af84829f)
 
+**v0.7.3**
+- Added **ffmpeg pre-flight check** at startup: shellbeats now detects whether `ffmpeg` and `ffprobe` are available in `PATH` and surfaces a clear status-bar message (`ffmpeg not found - required for downloads`) if either is missing. The check is non-fatal — playback still works without ffmpeg — but any download attempt (`d`/`D`) is short-circuited with the same message so users no longer get a silent failure when yt-dlp's MP3 post-processing can't run. Message is platform-agnostic (no `apt`/`brew` reference).
+- Added **download path logging**: with `-log` enabled, the download pipeline now records queue-add events, task pickup, the yt-dlp argv, every line of yt-dlp's stderr (merged), and the final exit code + file existence check. Previously the entire download path was silent, even with `-log`. Removed `--quiet` from the yt-dlp invocation so real errors (network, bot-check, post-processing failures) are now visible in the log.
+
 **v0.7.2**
 - Raised maximum number of playlists from 50 to 300.
 
@@ -41,7 +45,7 @@ You can download it here
 - Added **YouTube playlist sync** (`u` key): update imported YouTube playlists with new songs added on YouTube.
 - New Settings options: Seek Step (configurable), Remember Session (toggle), Shuffle Mode (toggle).
 
-# shellbeats V0.7.2
+# shellbeats V0.7.3
 
 ![Demo](shellbeats.gif)
 
@@ -244,6 +248,7 @@ Sync is additive-only importing or pulling never removes your existing songs.
 
 - `mpv` - audio playback
 - `yt-dlp` - YouTube search, streaming and downloading (auto-managed, see below)
+- `ffmpeg` (provides `ffmpeg` and `ffprobe`) - **required for downloads**: yt-dlp uses it to extract and convert audio to MP3. Without it, playback still works but `d`/`D` will refuse to queue with `ffmpeg not found - required for downloads`
 - `ncurses` - terminal UI
 - `pthread` - background downloads
 - `curl` or `wget` - needed for yt-dlp auto-update (at least one must be installed)
@@ -285,21 +290,21 @@ Install dependencies:
 
 ### Debian/Ubuntu
 ```bash
-sudo apt install mpv libncurses-dev libcurl4-openssl-dev libcjson-dev yt-dlp curl
+sudo apt install mpv libncurses-dev libcurl4-openssl-dev libcjson-dev yt-dlp ffmpeg curl
 curl -fsSL https://deno.land/install.sh | sh
 ```
 ### Arch
 ```bash
-sudo pacman -S mpv ncurses curl cjson yt-dlp deno
+sudo pacman -S mpv ncurses curl cjson yt-dlp ffmpeg deno
 ```
 ### Fedora/RHEL/CentOS
 ```bash
-sudo dnf install mpv ncurses-devel libcurl-devel cJSON-devel yt-dlp curl
+sudo dnf install mpv ncurses-devel libcurl-devel cJSON-devel yt-dlp ffmpeg curl
 curl -fsSL https://deno.land/install.sh | sh
 ```
 ### macOS (via [Homebrew](https://brew.sh/))
 ```bash
-brew install mpv yt-dlp cjson curl deno
+brew install mpv yt-dlp cjson ffmpeg curl deno
 ```
 > Note: macOS setup has not been personally tested by the author, but the community confirms there are no compilation issues. ncurses is included with Xcode Command Line Tools.
 

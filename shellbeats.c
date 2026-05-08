@@ -31,7 +31,7 @@
 
 #define MAX_RESULTS 150
 #define DEFAULT_MAX_RESULTS 50
-#define SHELLBEATS_VERSION "0.7.2"
+#define SHELLBEATS_VERSION "0.7.3"
 #define MAX_PLAYLISTS 300
 #define MAX_PLAYLIST_ITEMS 500
 #define IPC_SOCKET "/tmp/shellbeats_mpv.sock"
@@ -192,6 +192,7 @@ typedef struct {
     bool ytdlp_updating;
     bool ytdlp_update_done;
     bool ytdlp_has_local;
+    bool ffmpeg_available;
     pthread_t ytdlp_update_thread;
     bool ytdlp_update_thread_running;
     char ytdlp_update_status[128];
@@ -1581,9 +1582,12 @@ static void *download_thread_func(void *arg) {
         // Copy task data while holding lock
         DownloadTask task;
         memcpy(&task, &st->download_queue.tasks[task_idx], sizeof(DownloadTask));
-        
+
         pthread_mutex_unlock(&st->download_queue.mutex);
-        
+
+        sb_log("[DOWNLOAD] picking task idx=%d vid='%s' title='%s' playlist='%s'",
+               task_idx, task.video_id, task.title, task.playlist_name);
+
         // Build destination path
         char dest_dir[2048]; // Increased buffer size
         char dest_path[2560]; // Increased buffer size
@@ -1630,14 +1634,34 @@ static void *download_thread_func(void *arg) {
         argv[ac++] = "--audio-format";
         argv[ac++] = "mp3";
         argv[ac++] = "--no-playlist";
-        argv[ac++] = "--quiet";
         argv[ac++] = "--no-warnings";
         argv[ac++] = "-o";
         argv[ac++] = dest_path;
         argv[ac++] = url;
         argv[ac] = NULL;
 
-        int result = sb_exec_status(argv, 1);
+        sb_log("[DOWNLOAD] exec yt-dlp: bin='%s' argc=%d url='%s' dest='%s'",
+               argv[0], ac, url, dest_path);
+
+        FILE *fp = sb_exec_popen(argv, 1);
+        int result;
+        if (!fp) {
+            sb_log("[DOWNLOAD] sb_exec_popen failed: errno=%d (%s)",
+                   errno, strerror(errno));
+            result = -1;
+        } else {
+            char line[1024];
+            int line_count = 0;
+            while (fgets(line, sizeof(line), fp)) {
+                size_t L = strlen(line);
+                while (L && (line[L-1] == '\n' || line[L-1] == '\r')) line[--L] = '\0';
+                if (line[0]) sb_log("[yt-dlp] %s", line);
+                line_count++;
+            }
+            result = sb_exec_pclose(fp);
+            sb_log("[DOWNLOAD] yt-dlp finished: exit=%d output_lines=%d file_exists=%s",
+                   result, line_count, file_exists(dest_path) ? "yes" : "no");
+        }
         sb_free_cookie_args(argv, cookie_from, cookie_to);
         
         pthread_mutex_lock(&st->download_queue.mutex);
@@ -1679,10 +1703,20 @@ static void stop_download_thread(AppState *st) {
 // NEW: Download Queue Management
 // ============================================================================
 
-static int add_to_download_queue(AppState *st, const char *video_id, const char *title, 
+static int add_to_download_queue(AppState *st, const char *video_id, const char *title,
                                   const char *playlist_name) {
     if (!video_id || !video_id[0]) return -1;
-    
+
+    if (!st->ffmpeg_available) {
+        sb_log("[DOWNLOAD] queue add rejected: ffmpeg/ffprobe missing (vid='%s')",
+               video_id);
+        return -1;
+    }
+
+    sb_log("[DOWNLOAD] queue add: vid='%s' title='%s' playlist='%s'",
+           video_id, title ? title : "(null)",
+           playlist_name ? playlist_name : "(null)");
+
     // Build destination directory
     char dest_dir[2048]; // Increased buffer size
     if (playlist_name && playlist_name[0]) {
@@ -4076,7 +4110,18 @@ static bool check_dependencies(AppState *st, char *errmsg, size_t errsz) {
             return false;
         }
     }
-    
+
+    // ffmpeg + ffprobe: required for download post-processing (audio extract).
+    // Non-fatal: shellbeats can still play streams without them.
+    bool ffmpeg_ok = (system("command -v ffmpeg  >/dev/null 2>&1") == 0);
+    bool ffprobe_ok = (system("command -v ffprobe >/dev/null 2>&1") == 0);
+    st->ffmpeg_available = (ffmpeg_ok && ffprobe_ok);
+    sb_log("Dependency check: ffmpeg=%s ffprobe=%s",
+           ffmpeg_ok ? "yes" : "no", ffprobe_ok ? "yes" : "no");
+    if (!st->ffmpeg_available) {
+        snprintf(errmsg, errsz, "ffmpeg not found - required for downloads");
+    }
+
     return true;
 }
 
@@ -4931,6 +4976,14 @@ int main(int argc, char *argv[]) {
     } else {
         snprintf(status, sizeof(status), "Press / to search, d to download, f for playlists, h for help.");
     }
+
+    // Surface the ffmpeg warning at first paint, overriding the welcome line.
+    // The user can still trigger normal status messages with any keypress.
+    if (!st.ffmpeg_available) {
+        snprintf(status, sizeof(status),
+                 "ffmpeg not found - required for downloads");
+    }
+
     draw_ui(&st, status);
 
     bool running = true;
@@ -5345,6 +5398,11 @@ int main(int argc, char *argv[]) {
                     // NEW: Download single song from search
                     case 'd':
                         if (st.search_count > 0) {
+                            if (!st.ffmpeg_available) {
+                                snprintf(status, sizeof(status),
+                                         "ffmpeg not found - required for downloads");
+                                break;
+                            }
                             Song *song = &st.search_results[st.search_selected];
                             int result = add_to_download_queue(&st, song->video_id, song->title, NULL);
                             if (result > 0) {
@@ -5609,8 +5667,13 @@ int main(int argc, char *argv[]) {
                     // NEW: Download entire playlist
                     case 'd':
                         if (st.playlist_count > 0) {
+                            if (!st.ffmpeg_available) {
+                                snprintf(status, sizeof(status),
+                                         "ffmpeg not found - required for downloads");
+                                break;
+                            }
                             Playlist *pl = &st.playlists[st.playlist_selected];
-                            
+
                             // Make sure songs are loaded
                             if (pl->count == 0) {
                                 load_playlist_songs(&st, st.playlist_selected);
@@ -5699,6 +5762,11 @@ int main(int argc, char *argv[]) {
                     // NEW: Download single song from playlist (saves to playlist folder)
                     case 'd':
                         if (pl && pl->count > 0) {
+                            if (!st.ffmpeg_available) {
+                                snprintf(status, sizeof(status),
+                                         "ffmpeg not found - required for downloads");
+                                break;
+                            }
                             Song *song = &pl->items[st.playlist_song_selected];
                             int result = add_to_download_queue(&st, song->video_id, song->title, pl->name);
                             if (result > 0) {
@@ -5742,6 +5810,11 @@ int main(int argc, char *argv[]) {
                     
                     case 'D':
                         if (pl && pl->is_youtube_playlist && pl->count > 0) {
+                            if (!st.ffmpeg_available) {
+                                snprintf(status, sizeof(status),
+                                         "ffmpeg not found - required for downloads");
+                                break;
+                            }
                             int added = 0;
                             for (int i = 0; i < pl->count; i++) {
                                 int result = add_to_download_queue(&st, pl->items[i].video_id,
