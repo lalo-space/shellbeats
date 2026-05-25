@@ -31,9 +31,9 @@
 
 #define MAX_RESULTS 150
 #define DEFAULT_MAX_RESULTS 50
-#define SHELLBEATS_VERSION "0.7.3"
+#define SHELLBEATS_VERSION "0.7.4"
 #define MAX_PLAYLISTS 300
-#define MAX_PLAYLIST_ITEMS 500
+#define MAX_PLAYLIST_ITEMS 1000
 #define IPC_SOCKET "/tmp/shellbeats_mpv.sock"
 #define CONFIG_DIR ".shellbeats"
 #define PLAYLISTS_DIR "playlists"
@@ -3032,7 +3032,7 @@ static void draw_header(AppState *st, int cols, ViewMode view) {
             break;
         case VIEW_PLAYLIST_SONGS:
             mvprintw(1, 0, "  Enter: play | Space: pause | n/p: next/prev | R: shuffle | t: jump | Left/Right: seek");
-            mvprintw(2, 0, "  a: add | d: download | X: remove | D: download all | u: sync YT | s: surisync | Esc: back");
+            mvprintw(2, 0, "  a: add | r: rename | d: download | X: remove | D: download all | u: sync YT | s: surisync | Esc: back");
             break;
         case VIEW_ADD_TO_PLAYLIST:
             mvprintw(1, 0, "  Enter: add to playlist | c: create new playlist");
@@ -4020,6 +4020,96 @@ static int get_string_input(char *buf, size_t bufsz, const char *prompt) {
         memmove(buf, trimmed, strlen(trimmed) + 1);
     }
     
+    return strlen(buf);
+}
+
+// Like get_string_input but starts with pre-filled text that user can edit
+static int get_string_input_prefilled(char *buf, size_t bufsz, const char *prompt, const char *prefill) {
+    int rows, cols;
+    getmaxyx(stdscr, rows, cols);
+
+    int y = rows - 1;
+    move(y, 0);
+    clrtoeol();
+
+    attron(A_BOLD);
+    mvprintw(y, 0, "%s", prompt);
+    attroff(A_BOLD);
+
+    int prompt_len = strlen(prompt);
+    int max_input = cols - prompt_len - 2;
+    if (max_input > (int)bufsz - 1) max_input = bufsz - 1;
+    if (max_input < 1) max_input = 1;
+
+    // Pre-fill buffer
+    memset(buf, 0, bufsz);
+    if (prefill) {
+        strncpy(buf, prefill, max_input);
+        buf[max_input] = '\0';
+    }
+    int len = strlen(buf);
+    int cursor = len;
+
+    timeout(-1);
+    noecho();
+    curs_set(1);
+
+    // Draw initial prefilled text
+    mvprintw(y, prompt_len, "%s", buf);
+    move(y, prompt_len + cursor);
+    refresh();
+
+    while (1) {
+        int ch = getch();
+
+        if (ch == '\n' || ch == KEY_ENTER) {
+            break;
+        } else if (ch == 27) { // Escape - cancel
+            buf[0] = '\0';
+            len = 0;
+            break;
+        } else if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
+            if (cursor > 0) {
+                memmove(&buf[cursor - 1], &buf[cursor], len - cursor + 1);
+                cursor--;
+                len--;
+            }
+        } else if (ch == KEY_DC) { // Delete key
+            if (cursor < len) {
+                memmove(&buf[cursor], &buf[cursor + 1], len - cursor);
+                len--;
+            }
+        } else if (ch == KEY_LEFT) {
+            if (cursor > 0) cursor--;
+        } else if (ch == KEY_RIGHT) {
+            if (cursor < len) cursor++;
+        } else if (ch == KEY_HOME) {
+            cursor = 0;
+        } else if (ch == KEY_END) {
+            cursor = len;
+        } else if (ch >= 32 && ch < 127 && len < max_input) {
+            memmove(&buf[cursor + 1], &buf[cursor], len - cursor + 1);
+            buf[cursor] = ch;
+            cursor++;
+            len++;
+        }
+
+        // Redraw input line
+        move(y, prompt_len);
+        clrtoeol();
+        mvprintw(y, prompt_len, "%s", buf);
+        move(y, prompt_len + cursor);
+        refresh();
+    }
+
+    curs_set(0);
+    timeout(100);
+
+    char *trimmed = trim_whitespace(buf);
+    if (trimmed != buf) {
+        memmove(buf, trimmed, strlen(trimmed) + 1);
+    }
+
     return strlen(buf);
 }
 
@@ -5943,6 +6033,25 @@ int main(int argc, char *argv[]) {
                         st.surisync_return_view = VIEW_PLAYLIST_SONGS;
                         status[0] = '\0';
                         break;
+
+                    // Rename song title
+                    case 'r':
+                        if (pl && pl->count > 0 && st.playlist_song_selected < pl->count) {
+                            Song *song = &pl->items[st.playlist_song_selected];
+                            char new_title[512] = {0};
+                            int len = get_string_input_prefilled(new_title, sizeof(new_title),
+                                "Rename: ", song->title ? song->title : "");
+                            if (len > 0 && (song->title == NULL || strcmp(new_title, song->title) != 0)) {
+                                free(song->title);
+                                song->title = strdup(new_title);
+                                save_playlist(&st, st.current_playlist_idx);
+                                auto_sync_playlist(&st, st.current_playlist_idx);
+                                snprintf(status, sizeof(status), "Renamed to: %s", new_title);
+                            } else if (len == 0) {
+                                snprintf(status, sizeof(status), "Rename cancelled");
+                            }
+                        }
+                        break;
                 }
                 break;
             }
@@ -5963,6 +6072,23 @@ int main(int argc, char *argv[]) {
                     case '\n':
                     case KEY_ENTER:
                         if (st.playlist_count > 0 && st.song_to_add) {
+                            // Ask if user wants to rename before adding
+                            char new_title[512] = {0};
+                            int rlen = get_string_input_prefilled(new_title, sizeof(new_title),
+                                "Rename (Enter to keep): ",
+                                st.song_to_add->title ? st.song_to_add->title : "");
+                            if (rlen > 0 && (st.song_to_add->title == NULL ||
+                                strcmp(new_title, st.song_to_add->title) != 0)) {
+                                free(st.song_to_add->title);
+                                st.song_to_add->title = strdup(new_title);
+                            }
+                            // rlen == 0 means Escape was pressed, cancel the add
+                            if (rlen == 0) {
+                                snprintf(status, sizeof(status), "Cancelled");
+                                st.song_to_add = NULL;
+                                st.view = VIEW_SEARCH;
+                                break;
+                            }
                             if (add_song_to_playlist(&st, st.add_to_playlist_selected, st.song_to_add)) {
                                 snprintf(status, sizeof(status), "Added: %s to: %s",
                                          st.song_to_add->title ? st.song_to_add->title : "?",

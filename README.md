@@ -15,6 +15,11 @@ https://shellbeats.com
 You can download it here 
 [![Shellbeats NG Windows and OSX Version]](https://surikata.app/g/9fa4af84829f)
 
+**v0.7.4**
+- Added **song rename** (`r` key): rename individual songs inside a playlist. Press `r` on any song to edit its title in-place. Changes are saved to disk and synced to Surikata automatically.
+- Added **rename on add**: when adding a song to a playlist, you are now prompted to rename it before saving. Press Enter to keep the original title, edit it, or press Escape to cancel.
+- Raised **maximum playlist size** from 500 to 1000 songs.
+
 **v0.7.3**
 - Added **ffmpeg pre-flight check** at startup: shellbeats now detects whether `ffmpeg` and `ffprobe` are available in `PATH` and surfaces a clear status-bar message (`ffmpeg not found - required for downloads`) if either is missing. The check is non-fatal — playback still works without ffmpeg — but any download attempt (`d`/`D`) is short-circuited with the same message so users no longer get a silent failure when yt-dlp's MP3 post-processing can't run. Message is platform-agnostic (no `apt`/`brew` reference).
 - Added **download path logging**: with `-log` enabled, the download pipeline now records queue-add events, task pickup, the yt-dlp argv, every line of yt-dlp's stderr (merged), and the final exit code + file existence check. Previously the entire download path was silent, even with `-log`. Removed `--quiet` from the yt-dlp invocation so real errors (network, bot-check, post-processing failures) are now visible in the log.
@@ -45,7 +50,7 @@ You can download it here
 - Added **YouTube playlist sync** (`u` key): update imported YouTube playlists with new songs added on YouTube.
 - New Settings options: Seek Step (configurable), Remember Session (toggle), Shuffle Mode (toggle).
 
-# shellbeats V0.7.3
+# shellbeats V0.7.4
 
 ![Demo](shellbeats.gif)
 
@@ -359,6 +364,7 @@ All shortcuts are visible in the header when you run shellbeats. Here's the comp
 | `a` | Add current song to a playlist |
 | `c` | Create new playlist |
 | `e` | Rename playlist |
+| `r` | Rename song title |
 | `p` | Import YouTube playlist |
 | `X` | Remove song from playlist |
 | `x` | Delete playlist (including folder & downloaded files) |
