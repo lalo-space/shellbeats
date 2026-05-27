@@ -4,10 +4,12 @@ https://shellbeats.com
 [![Make a donation](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/donate/?hosted_button_id=RFY5QFC6XDX5N)
 
 <a href="https://apps.apple.com/it/app/surikata/id6760357143"><img src="https://surikata.app/assets/stores/app-store.png" height="40"></a> **Surikata for playlist sync available in appstore!**
-
-**We are looking for 12 betatester on surikata.app PlayStore App, if you are interested please sign-in and contact me on SurikataNews Guild!**
-
 ## Updates
+**After syncing your Shellbeats library on Surikata.app, you can play all your music from the web player on your surikata.app account**
+
+![WebPlayerSuriSync](shellbeatswebplayer.gif)
+
+
 **ShellbeatsNG is now available: a graphical version that does not require using the terminal or compiling the software, for both Windows and Mac users.**
 
 <img src="shellbeatsng.webp" alt="SHELLBEATS-NG" width="50%">
