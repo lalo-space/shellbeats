@@ -31,7 +31,7 @@
 
 #define MAX_RESULTS 150
 #define DEFAULT_MAX_RESULTS 50
-#define SHELLBEATS_VERSION "0.7.5"
+#define SHELLBEATS_VERSION "0.8.0"
 #define MAX_PLAYLISTS 300
 #define MAX_PLAYLIST_ITEMS 1000
 #define IPC_SOCKET "/tmp/shellbeats_mpv.sock"
@@ -2992,11 +2992,15 @@ static void format_duration(int sec, char out[16]) {
 // Compare version strings like "0.6" vs "0.7" (locale-independent)
 // Returns: -1 if a < b, 0 if equal, 1 if a > b
 static int version_compare(const char *a, const char *b) {
-    int a_major = 0, a_minor = 0, b_major = 0, b_minor = 0;
-    sscanf(a, "%d.%d", &a_major, &a_minor);
-    sscanf(b, "%d.%d", &b_major, &b_minor);
+    int a_major = 0, a_minor = 0, a_patch = 0;
+    int b_major = 0, b_minor = 0, b_patch = 0;
+    /* sscanf with %d.%d.%d still works for two-component versions:
+     * "0.7" → major=0, minor=7, patch=0 (third %d untouched). */
+    sscanf(a, "%d.%d.%d", &a_major, &a_minor, &a_patch);
+    sscanf(b, "%d.%d.%d", &b_major, &b_minor, &b_patch);
     if (a_major != b_major) return a_major < b_major ? -1 : 1;
     if (a_minor != b_minor) return a_minor < b_minor ? -1 : 1;
+    if (a_patch != b_patch) return a_patch < b_patch ? -1 : 1;
     return 0;
 }
 

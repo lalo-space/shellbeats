@@ -17,6 +17,9 @@ https://shellbeats.com
 You can download it here 
 [![Shellbeats NG Windows and OSX Version]](https://surikata.app/g/9fa4af84829f)
 
+**v0.8.0**
+- Fixed **patch-version blindness in update check**. `version_compare()` was reading only `major.minor` via `sscanf("%d.%d", ...)`, so `0.7.4` vs `0.7.5` (and every other patch upgrade) compared equal and no "Update to vX" banner appeared in the header. Now reads the full `major.minor.patch` and compares patch too. Minor bump (0.7 → 0.8) is intentional so that even installations still running the broken `version_compare` of v0.7.x will catch this release — the old code does correctly detect minor differences.
+
 **v0.7.5**
 - Fixed **large YouTube playlist fetch** (#50). Playlists with more than ~100 items used to truncate silently because YouTube/yt-dlp caps a single `--flat-playlist` response at the page boundary. `fetch_youtube_playlist()` now requests the list in explicit `--playlist-items START-END` chunks of 100 and stops only when yt-dlp returns an empty chunk or `MAX_PLAYLIST_ITEMS` is reached. Progress callback fires after every chunk.
 
