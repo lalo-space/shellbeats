@@ -31,7 +31,7 @@
 
 #define MAX_RESULTS 150
 #define DEFAULT_MAX_RESULTS 50
-#define SHELLBEATS_VERSION "0.7.4"
+#define SHELLBEATS_VERSION "0.7.5"
 #define MAX_PLAYLISTS 300
 #define MAX_PLAYLIST_ITEMS 1000
 #define IPC_SOCKET "/tmp/shellbeats_mpv.sock"

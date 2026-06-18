@@ -17,6 +17,9 @@ https://shellbeats.com
 You can download it here 
 [![Shellbeats NG Windows and OSX Version]](https://surikata.app/g/9fa4af84829f)
 
+**v0.7.5**
+- Fixed **large YouTube playlist fetch** (#50). Playlists with more than ~100 items used to truncate silently because YouTube/yt-dlp caps a single `--flat-playlist` response at the page boundary. `fetch_youtube_playlist()` now requests the list in explicit `--playlist-items START-END` chunks of 100 and stops only when yt-dlp returns an empty chunk or `MAX_PLAYLIST_ITEMS` is reached. Progress callback fires after every chunk.
+
 **v0.7.4**
 - Added **song rename** (`r` key): rename individual songs inside a playlist. Press `r` on any song to edit its title in-place. Changes are saved to disk and synced to Surikata automatically.
 - Added **rename on add**: when adding a song to a playlist, you are now prompted to rename it before saving. Press Enter to keep the original title, edit it, or press Escape to cancel.
