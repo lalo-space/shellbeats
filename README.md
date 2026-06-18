@@ -18,7 +18,7 @@ You can download it here
 [![Shellbeats NG Windows and OSX Version]](https://surikata.app/g/9fa4af84829f)
 
 **v0.8.0**
-- Fixed **patch-version blindness in update check**. `version_compare()` was reading only `major.minor` via `sscanf("%d.%d", ...)`, so `0.7.4` vs `0.7.5` (and every other patch upgrade) compared equal and no "Update to vX" banner appeared in the header. Now reads the full `major.minor.patch` and compares patch too. Minor bump (0.7 → 0.8) is intentional so that even installations still running the broken `version_compare` of v0.7.x will catch this release — the old code does correctly detect minor differences.
+- Fixed **patch-version blindness in update check**. `version_compare()` was reading only `major.minor` via `sscanf("%d.%d", ...)`, so `0.7.4` vs `0.7.5` (and every other patch upgrade) compared equal and no "Update to vX" banner appeared in the header. Now reads the full `major.minor.patch` and compares patch too. Minor bump (0.7 → 0.8) is intentional so that even installations still running the broken `version_compare` of v0.7.x will catch this release, the old code does correctly detect minor differences.
 
 **v0.7.5**
 - Fixed **large YouTube playlist fetch** (#50). Playlists with more than ~100 items used to truncate silently because YouTube/yt-dlp caps a single `--flat-playlist` response at the page boundary. `fetch_youtube_playlist()` now requests the list in explicit `--playlist-items START-END` chunks of 100 and stops only when yt-dlp returns an empty chunk or `MAX_PLAYLIST_ITEMS` is reached. Progress callback fires after every chunk.
@@ -29,7 +29,7 @@ You can download it here
 - Raised **maximum playlist size** from 500 to 1000 songs.
 
 **v0.7.3**
-- Added **ffmpeg pre-flight check** at startup: shellbeats now detects whether `ffmpeg` and `ffprobe` are available in `PATH` and surfaces a clear status-bar message (`ffmpeg not found - required for downloads`) if either is missing. The check is non-fatal — playback still works without ffmpeg — but any download attempt (`d`/`D`) is short-circuited with the same message so users no longer get a silent failure when yt-dlp's MP3 post-processing can't run. Message is platform-agnostic (no `apt`/`brew` reference).
+- Added **ffmpeg pre-flight check** at startup: shellbeats now detects whether `ffmpeg` and `ffprobe` are available in `PATH` and surfaces a clear status-bar message (`ffmpeg not found - required for downloads`) if either is missing. The check is non-fatal , playback still works without ffmpeg , but any download attempt (`d`/`D`) is short-circuited with the same message so users no longer get a silent failure when yt-dlp's MP3 post-processing can't run. Message is platform-agnostic (no `apt`/`brew` reference).
 - Added **download path logging**: with `-log` enabled, the download pipeline now records queue-add events, task pickup, the yt-dlp argv, every line of yt-dlp's stderr (merged), and the final exit code + file existence check. Previously the entire download path was silent, even with `-log`. Removed `--quiet` from the yt-dlp invocation so real errors (network, bot-check, post-processing failures) are now visible in the log.
 
 **v0.7.2**
