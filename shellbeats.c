@@ -149,11 +149,17 @@ typedef struct {
     // EOF state
     bool eof;
 
+
+    // EOF state
+    bool eof;
+
     // Playback state
     int playing_index;
     bool playing_from_playlist;
     int playing_playlist_idx;
     bool paused;
+    float volume;
+
     float volume;
 
     // UI state
@@ -1215,6 +1221,7 @@ static void save_config(AppState *st) {
 
     // Session state (only saved if remember_session is enabled)
     if (st->config.remember_session) {
+        fprintf(f, "  \"volume\": %.2f,\n", st->volume);
         fprintf(f, "  \"volume\": %.2f,\n", st->volume);
         fprintf(f, "  \"last_query\": \"%s\",\n", escaped_query ? escaped_query : "");
         fprintf(f, "  \"last_playlist_idx\": %d,\n", st->last_playlist_idx);
