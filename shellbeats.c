@@ -2646,13 +2646,13 @@ static void mpv_quit(void) {
     sb_log("[PLAYBACK] mpv_quit: cleanup complete");
 }
 
-// Check if mpv finished playing (returns true if track ended)
-// Only returns true for genuine end-of-file, not loading states
+// Check for mpv events that have been subscribed to, log the results,
+// and perform necessary changes to the state
 static void mpv_check_events(AppState *st) {
     if (mpv_ipc_fd < 0)
         return;
 
-    char buf[100];
+    char buf[BUFSIZ];
     int dup_fd = dup(mpv_ipc_fd);
     FILE *stream = fdopen(dup_fd, "r");
     if (stream == NULL) {
@@ -2671,43 +2671,34 @@ static void mpv_check_events(AppState *st) {
     // Loop over events
     st->eof = false;
     while (fgets(buf, sizeof(buf) - 1, stream) != NULL) {
+
         // Check for track end updates
         if (strstr(buf, "\"event\":\"end-file\"") && strstr(buf, "\"reason\":\"eof\"")) {
             sb_log("[PLAYBACK] mpv_check_events: track ended (EOF)");
             st->eof = true;
         }
+
+        // Check for end-file event with reason "eof"
+        // Format: {"event":"end-file","reason":"eof",...}
+        if (strstr(buf, "\"event\":\"end-file\"") && strstr(buf, "\"reason\":\"eof\"")) {
+            sb_log("[PLAYBACK] mpv_check_events: track ended (end-file EOF)");
+            st->eof = true;
         }
-        return false;
-    }
 
-    buf[n] = '\0';
-    sb_log("[PLAYBACK] mpv_check_track_end: IPC data received (%zd bytes): %.200s", n, buf);
+        // Check for eof-reached property change (observed via observe_property)
+        // Format: {"event":"property-change","name":"eof-reached","data":true}
+        if (strstr(buf, "\"eof-reached\"") && strstr(buf, "\"data\":true")) {
+            sb_log("[PLAYBACK] mpv_check_events track ended (eof-reached property)");
+            st->eof = true;
+        }
 
-    // Check for end-file event with reason "eof"
-    // Format: {"event":"end-file","reason":"eof",...}
-    if (strstr(buf, "\"event\":\"end-file\"") && strstr(buf, "\"reason\":\"eof\"")) {
-        sb_log("[PLAYBACK] mpv_check_track_end: track ended (end-file EOF)");
-        return true;
-    }
-
-    // Check for eof-reached property change (observed via observe_property)
-    // Format: {"event":"property-change","name":"eof-reached","data":true}
-    if (strstr(buf, "\"eof-reached\"") && strstr(buf, "\"data\":true")) {
-        sb_log("[PLAYBACK] mpv_check_track_end: track ended (eof-reached property)");
-        return true;
-    }
-
-    // Also treat end-file with error as track end (skip to next instead of hanging)
-    if (strstr(buf, "\"event\":\"end-file\"") && strstr(buf, "\"reason\":\"error\"")) {
-        sb_log("[PLAYBACK] mpv_check_track_end: track ended with ERROR, advancing");
-        return true;
-    }
-
-    return false;
-        // Log if there's an end-file with error reason (useful for debugging stream failures)
+        // Also treat end-file with error as track end (skip to next instead of hanging)
         if (strstr(buf, "\"event\":\"end-file\"") && strstr(buf, "\"reason\":\"error\"")) {
-            sb_log("[PLAYBACK] mpv_check_events: WARNING - track ended with ERROR");
+            sb_log("[PLAYBACK] mpv_check_events: track ended with ERROR, advancing");
+            st->eof = true;
         }
+
+        // Check if there's a volume change
         if (strstr(buf, "event\":\"property-change") && strstr(buf, "id\":2")) {
             char log[50];
             float volume = atof(strstr(buf, "data\":") + 6);
