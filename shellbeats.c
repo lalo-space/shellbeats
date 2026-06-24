@@ -218,6 +218,8 @@ typedef struct {
     // Shuffle mode
     bool shuffle_mode;
     RepeatMode repeat_mode;
+    int *shuffle_order;       // Shuffled index array (NULL when inactive)
+    int shuffle_playlist_idx; // Playlist_idx the order belongs to (-1=search, -2=none)
 
     // Seek step in seconds (configurable)
     int seek_step;
@@ -1277,6 +1279,8 @@ static void load_config(AppState *st) {
     st->config.remember_session = false;
     st->shuffle_mode = false;
     st->repeat_mode = REPEAT_OFF;
+    st->shuffle_order = NULL;
+    st->shuffle_playlist_idx = -2;
     st->last_query[0] = '\0';
     st->cached_search_count = 0;
     st->last_playlist_idx = -1;
@@ -2858,13 +2862,54 @@ static void play_playlist_song(AppState *st, int playlist_idx, int song_idx) {
     sb_log("[PLAYBACK] play_playlist_song: playback started");
 }
 
-static int get_random_index(int count, int current) {
-    if (count <= 1) return 0;
-    int next;
-    do {
-        next = rand() % count;
-    } while (next == current && count > 1);
-    return next;
+static void free_shuffle_order(AppState *st) {
+    free(st->shuffle_order);
+    st->shuffle_order = NULL;
+    st->shuffle_playlist_idx = -2;
+}
+
+static void build_shuffle_order(AppState *st, int count, int idx) {
+    free(st->shuffle_order);
+    st->shuffle_order = malloc(count * sizeof(int));
+    if (!st->shuffle_order) {
+        st->shuffle_playlist_idx = -2;
+        return;
+    }
+    st->shuffle_playlist_idx = idx;
+    for (int i = 0; i < count; i++) st->shuffle_order[i] = i;
+    for (int i = count - 1; i > 0; i--) {
+        int j = rand() % (i + 1);
+        int tmp = st->shuffle_order[i];
+        st->shuffle_order[i] = st->shuffle_order[j];
+        st->shuffle_order[j] = tmp;
+    }
+}
+
+static int shuffle_current_pos(AppState *st, int count) {
+    int cur_pos = -1;
+    if (st->shuffle_order) {
+        for (int i = 0; i < count; i++) {
+            if (st->shuffle_order[i] == st->playing_index)
+            {
+                cur_pos = i;
+                break;
+            }
+        }
+    }
+    return cur_pos;
+}
+
+static int shuffle_next_pos(AppState *st, int count, int idx) {
+    if (!st->shuffle_order || st->shuffle_playlist_idx != idx) {
+        build_shuffle_order(st, count, idx);
+    }
+    int cur_pos = shuffle_current_pos(st, count);
+    int next_pos = cur_pos + 1;
+    if (next_pos >= count) {
+        build_shuffle_order(st, count, idx);
+        next_pos = 0;
+    }
+    return next_pos;
 }
 
 static void play_next(AppState *st) {
@@ -2889,58 +2934,50 @@ static void play_next(AppState *st) {
 
     if (st->playing_from_playlist && st->playing_playlist_idx >= 0) {
         Playlist *pl = &st->playlists[st->playing_playlist_idx];
-        int next;
         if (st->shuffle_mode) {
-            next = get_random_index(pl->count, st->playing_index);
-            sb_log("[PLAYBACK] play_next: shuffle mode, random index=%d/%d", next, pl->count);
-        } else {
-            next = st->playing_index + 1;
-        }
-        if (next < pl->count) {
-            sb_log("[PLAYBACK] play_next: advancing to playlist song #%d/%d", next, pl->count);
-            play_playlist_song(st, st->playing_playlist_idx, next);
-            st->playlist_song_selected = next;
-        } else if (effective_repeat == REPEAT_ALL && pl->count > 0) {
-            sb_log("[PLAYBACK] play_next: repeat-all mode, wrapping playlist to start");
-            play_playlist_song(st, st->playing_playlist_idx, 0);
-            st->playlist_song_selected = 0;
-        } else if (st->shuffle_mode) {
-            // In shuffle mode, loop back
-            next = get_random_index(pl->count, st->playing_index);
-            sb_log("[PLAYBACK] play_next: shuffle loop, random index=%d/%d", next, pl->count);
+            int next_pos = shuffle_next_pos(st, pl->count, st->playing_playlist_idx);
+            int next = st->shuffle_order[next_pos];
+            sb_log("[PLAYBACK] play_next: shuffle pos=%d/%d song=%d", next_pos, pl->count, next);
             play_playlist_song(st, st->playing_playlist_idx, next);
             st->playlist_song_selected = next;
         } else {
-            sb_log("[PLAYBACK] play_next: already at last song in playlist (%d/%d)", st->playing_index, pl->count);
-            st->playing_index = -1;
-            st->playing_from_playlist = false;
-            st->playing_playlist_idx = -1;
-            st->paused = false;
+            int next = st->playing_index + 1;
+            if (next < pl->count) {
+                sb_log("[PLAYBACK] play_next: advancing to playlist song #%d/%d", next, pl->count);
+                play_playlist_song(st, st->playing_playlist_idx, next);
+                st->playlist_song_selected = next;
+            } else if (effective_repeat == REPEAT_ALL && pl->count > 0) {
+                sb_log("[PLAYBACK] play_next: repeat-all mode, wrapping playlist to start");
+                play_playlist_song(st, st->playing_playlist_idx, 0);
+                st->playlist_song_selected = 0;
+            } else {
+                sb_log("[PLAYBACK] play_next: already at last song in playlist (%d/%d)", st->playing_index, pl->count);
+                st->playing_index = -1;
+                st->playing_from_playlist = false;
+                st->playing_playlist_idx = -1;
+                st->paused = false;
+            }
         }
     } else if (st->search_count > 0) {
-        int next;
         if (st->shuffle_mode) {
-            next = get_random_index(st->search_count, st->playing_index);
-            sb_log("[PLAYBACK] play_next: shuffle mode, random search index=%d/%d", next, st->search_count);
-        } else {
-            next = st->playing_index + 1;
-        }
-        if (next < st->search_count) {
-            sb_log("[PLAYBACK] play_next: advancing to search result #%d/%d", next, st->search_count);
-            play_search_result(st, next);
-            st->search_selected = next;
-        } else if (st->shuffle_mode) {
-            // In shuffle mode, loop back
-            next = get_random_index(st->search_count, st->playing_index);
-            sb_log("[PLAYBACK] play_next: shuffle loop, random search index=%d/%d", next, st->search_count);
+            int next_pos = shuffle_next_pos(st, st->search_count, -1);
+            int next = st->shuffle_order[next_pos];
+            sb_log("[PLAYBACK] play_next: shuffle search pos=%d/%d song=%d", next_pos, st->search_count, next);
             play_search_result(st, next);
             st->search_selected = next;
         } else {
-            sb_log("[PLAYBACK] play_next: already at last search result (%d/%d)", st->playing_index, st->search_count);
-            st->playing_index = -1;
-            st->playing_from_playlist = false;
-            st->playing_playlist_idx = -1;
-            st->paused = false;
+            int next = st->playing_index + 1;
+            if (next < st->search_count) {
+                sb_log("[PLAYBACK] play_next: advancing to search result #%d/%d", next, st->search_count);
+                play_search_result(st, next);
+                st->search_selected = next;
+            } else {
+                sb_log("[PLAYBACK] play_next: already at last search result (%d/%d)", st->playing_index, st->search_count);
+                st->playing_index = -1;
+                st->playing_from_playlist = false;
+                st->playing_playlist_idx = -1;
+                st->paused = false;
+            }
         }
     }
 }
@@ -2949,24 +2986,53 @@ static void play_prev(AppState *st) {
     sb_log("[PLAYBACK] play_prev: current index=%d, from_playlist=%d, playlist_idx=%d",
            st->playing_index, st->playing_from_playlist, st->playing_playlist_idx);
     if (st->playing_from_playlist && st->playing_playlist_idx >= 0) {
-        int prev = st->playing_index - 1;
-        if (prev >= 0) {
-            sb_log("[PLAYBACK] play_prev: going back to playlist song #%d", prev);
-            play_playlist_song(st, st->playing_playlist_idx, prev);
-            st->playlist_song_selected = prev;
+        if (st->shuffle_mode) {
+            Playlist *pl = &st->playlists[st->playing_playlist_idx];
+            if (st->shuffle_order && st->shuffle_playlist_idx == st->playing_playlist_idx) {
+                int cur_pos = shuffle_current_pos(st, pl->count);
+                if (cur_pos > 0) {
+                    int prev = st->shuffle_order[cur_pos - 1];
+                    sb_log("[PLAYBACK] play_prev: shuffle pos=%d/%d song=%d", cur_pos - 1, pl->count, prev);
+                    play_playlist_song(st, st->playing_playlist_idx, prev);
+                    st->playlist_song_selected = prev;
+                } else {
+                    sb_log("[PLAYBACK] play_prev: shuffle mode, at start of order");
+                }
+            }
         } else {
-            sb_log("[PLAYBACK] play_prev: already at first song in playlist");
+            int prev = st->playing_index - 1;
+            if (prev >= 0) {
+                sb_log("[PLAYBACK] play_prev: going back to playlist song #%d", prev);
+                play_playlist_song(st, st->playing_playlist_idx, prev);
+                st->playlist_song_selected = prev;
+            } else {
+                sb_log("[PLAYBACK] play_prev: already at first song in playlist");
+            }
         }
     } else if (st->search_count > 0) {
-        int prev = st->playing_index - 1;
-        if (prev >= 0) {
-            sb_log("[PLAYBACK] play_prev: going back to search result #%d", prev);
-            play_search_result(st, prev);
-            st->search_selected = prev;
+        if (st->shuffle_mode) {
+            if (st->shuffle_order && st->shuffle_playlist_idx == -1) {
+                int cur_pos = shuffle_current_pos(st, st->search_count);
+                if (cur_pos > 0) {
+                    int prev = st->shuffle_order[cur_pos - 1];
+                    sb_log("[PLAYBACK] play_prev: shuffle search pos=%d/%d song=%d", cur_pos - 1, st->search_count, prev);
+                    play_search_result(st, prev);
+                    st->search_selected = prev;
+                } else {
+                    sb_log("[PLAYBACK] play_prev: shuffle mode, at start of order");
+                }
+            }
         } else {
-            sb_log("[PLAYBACK] play_prev: already at first search result");
-        }
+            int prev = st->playing_index - 1;
+            if (prev >= 0) {
+                sb_log("[PLAYBACK] play_prev: going back to search result #%d", prev);
+                play_search_result(st, prev);
+                st->search_selected = prev;
+            } else {
+                sb_log("[PLAYBACK] play_prev: already at first search result");
+            }
     }
+}
 }
 
 // ============================================================================
@@ -5273,6 +5339,7 @@ int main(int argc, char *argv[]) {
 
             case 'R': // Toggle shuffle mode
                 st.shuffle_mode = !st.shuffle_mode;
+                free_shuffle_order(&st);
                 save_config(&st);
                 snprintf(status, sizeof(status), "Shuffle: %s", st.shuffle_mode ? "ON" : "OFF");
                 break;
@@ -6179,6 +6246,7 @@ int main(int argc, char *argv[]) {
                         } else if (st.settings_selected == 3) {
                             // Shuffle mode - toggle
                             st.shuffle_mode = !st.shuffle_mode;
+                            free_shuffle_order(&st);
                             save_config(&st);
                             snprintf(status, sizeof(status), "Shuffle: %s",
                                      st.shuffle_mode ? "ON" : "OFF");
@@ -6732,6 +6800,7 @@ int main(int argc, char *argv[]) {
     // Cleanup
     free_search_results(&st);
     free_all_playlists(&st);
+    free_shuffle_order(&st);
     mpv_quit();
 
     sb_log("ShellBeats exiting normally");
