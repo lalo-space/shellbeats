@@ -2924,7 +2924,8 @@ static void play_next(AppState *st) {
         sb_log("[PLAYBACK] play_next: repeat-one mode, replaying current track");
         if (st->playing_from_playlist && st->playing_playlist_idx >= 0) {
             play_playlist_song(st, st->playing_playlist_idx, st->playing_index);
-            st->playlist_song_selected = st->playing_index;
+            if (st->playing_playlist_idx == st->current_playlist_idx)
+                st->playlist_song_selected = st->playing_index;
         } else {
             play_search_result(st, st->playing_index);
             st->search_selected = st->playing_index;
@@ -2939,17 +2940,20 @@ static void play_next(AppState *st) {
             int next = st->shuffle_order[next_pos];
             sb_log("[PLAYBACK] play_next: shuffle pos=%d/%d song=%d", next_pos, pl->count, next);
             play_playlist_song(st, st->playing_playlist_idx, next);
-            st->playlist_song_selected = next;
+            if (st->playing_playlist_idx == st->current_playlist_idx)
+                st->playlist_song_selected = next;
         } else {
             int next = st->playing_index + 1;
             if (next < pl->count) {
                 sb_log("[PLAYBACK] play_next: advancing to playlist song #%d/%d", next, pl->count);
                 play_playlist_song(st, st->playing_playlist_idx, next);
-                st->playlist_song_selected = next;
+                if (st->playing_playlist_idx == st->current_playlist_idx)
+                    st->playlist_song_selected = next;
             } else if (effective_repeat == REPEAT_ALL && pl->count > 0) {
                 sb_log("[PLAYBACK] play_next: repeat-all mode, wrapping playlist to start");
                 play_playlist_song(st, st->playing_playlist_idx, 0);
-                st->playlist_song_selected = 0;
+                if (st->playing_playlist_idx == st->current_playlist_idx)
+                    st->playlist_song_selected = 0;
             } else {
                 sb_log("[PLAYBACK] play_next: already at last song in playlist (%d/%d)", st->playing_index, pl->count);
                 st->playing_index = -1;
@@ -2994,7 +2998,8 @@ static void play_prev(AppState *st) {
                     int prev = st->shuffle_order[cur_pos - 1];
                     sb_log("[PLAYBACK] play_prev: shuffle pos=%d/%d song=%d", cur_pos - 1, pl->count, prev);
                     play_playlist_song(st, st->playing_playlist_idx, prev);
-                    st->playlist_song_selected = prev;
+                    if (st->playing_playlist_idx == st->current_playlist_idx)
+                        st->playlist_song_selected = prev;
                 } else {
                     sb_log("[PLAYBACK] play_prev: shuffle mode, at start of order");
                 }
@@ -3004,7 +3009,8 @@ static void play_prev(AppState *st) {
             if (prev >= 0) {
                 sb_log("[PLAYBACK] play_prev: going back to playlist song #%d", prev);
                 play_playlist_song(st, st->playing_playlist_idx, prev);
-                st->playlist_song_selected = prev;
+                if (st->playing_playlist_idx == st->current_playlist_idx)
+                    st->playlist_song_selected = prev;
             } else {
                 sb_log("[PLAYBACK] play_prev: already at first song in playlist");
             }
